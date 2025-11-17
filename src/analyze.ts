@@ -787,6 +787,7 @@ const KNOWN_LANGUAGES = [
   "Java",
   "C++",
   "C#",
+  "C",
   "Ruby",
   "PHP",
   "Kotlin",
@@ -798,14 +799,50 @@ const KNOWN_LANGUAGES = [
   "Dart",
   "Objective-C",
   "Shell",
-  "Bash"
+  "Bash",
+  "Lua"
+] as const;
+
+/**
+ * JavaScript 生态的框架/运行时/库，在 README 中提及时应映射到 JavaScript
+ *
+ * 设计理念：
+ * - Node.js / Next.js / Vue.js / React 等都是 JavaScript 技术栈
+ * - 用户在 README 中写 "Node.js" 时，实际表达的是 "JavaScript (Node.js 运行时)"
+ * - 这些关键词应该被识别并归一化为 "JavaScript"
+ */
+const JS_ECOSYSTEM_KEYWORDS = [
+  "Node.js",
+  "Node",
+  "Next.js",
+  "Next",
+  "Vue.js",
+  "Vue",
+  "React.js",
+  "React",
+  "Svelte",
+  "Angular",
+  "Nuxt.js",
+  "Nuxt",
+  "Express.js",
+  "Express",
+  "Nest.js",
+  "NestJS"
 ] as const;
 
 /**
  * 从 Profile README 中提取自述的语言列表
  *
+ * 改进点（v0.0.7）：
+ * - 修复 C# 的正则匹配问题（`\bC#\b` 无法匹配，改用前瞻断言）
+ * - 添加 JavaScript 生态关键词映射（Node.js / Next.js / Vue / React 等 → JavaScript）
+ * - 添加 C 语言支持
+ * - 添加 Lua 语言支持
+ *
+ * 设计理念：
  * - 同时考虑纯文本和图片 alt 文本（很多 README 通过徽章展示语言）
  * - 仅使用简单的基于关键字的启发式规则，保证可解释和可复现
+ * - 将框架/运行时映射到对应的编程语言（如 Node.js → JavaScript）
  */
 function extractReadmeLanguages(readme: ProfileReadmeAnalysis): string[] {
   const texts: string[] = [];
@@ -829,15 +866,24 @@ function extractReadmeLanguages(readme: ProfileReadmeAnalysis): string[] {
   const haystack = texts.join("\n");
   const found = new Set<string>();
 
+  // 第一步：提取标准编程语言
   for (const lang of KNOWN_LANGUAGES) {
     let pattern: RegExp;
 
     switch (lang) {
       case "C++":
-        pattern = /\bC\+\+\b/i;
+        // C++ 需要转义 +
+        pattern = /\bC\+\+(?=\s|,|;|\.|$)/i;
         break;
       case "C#":
-        pattern = /\bC#\b/i;
+        // C# 的 # 不是单词字符，不能用 \b 作为后边界
+        // 使用前瞻断言确保后面是空白、逗号、分号、句号或行尾
+        pattern = /\bC#(?=\s|,|;|\.|$)/i;
+        break;
+      case "C":
+        // C 语言需要特殊处理，避免匹配到 C++ / C# / Objective-C
+        // 只匹配独立的 "C" 且后面不是 + 或 #
+        pattern = /\bC(?![+#])(?=\s|,|;|\.|$)/i;
         break;
       case "Objective-C":
         pattern = /\bObjective-C\b/i;
@@ -849,6 +895,19 @@ function extractReadmeLanguages(readme: ProfileReadmeAnalysis): string[] {
 
     if (pattern.test(haystack)) {
       found.add(lang);
+    }
+  }
+
+  // 第二步：检测 JavaScript 生态关键词并映射到 JavaScript
+  for (const keyword of JS_ECOSYSTEM_KEYWORDS) {
+    // 转义特殊字符（如 . 在正则中需要转义）
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\b${escaped}\\b`, "i");
+
+    if (pattern.test(haystack)) {
+      // 将这些关键词映射到 JavaScript
+      found.add("JavaScript");
+      break; // 只需要添加一次 JavaScript
     }
   }
 

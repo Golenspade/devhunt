@@ -2,9 +2,24 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
-## 0.0.6
+## 0.0.7
 
-> 当前版本（pround=0, normal=0, shame=6）。
+> 当前版本（pround=0, normal=0, shame=7）。
+
+### Fixed
+- **C# 语言提取 bug**：修复 `/\bC#\b/i` 正则无法匹配的问题（`#` 不是单词字符，`\b` 后边界失效），改用前瞻断言 `/\bC#(?=\s|,|;|\.|$)/i`。
+- **C 语言提取冲突**：添加负向前瞻 `/\bC(?![+#])/i` 避免误匹配 C++ / C#。
+
+### Added
+- **JavaScript 生态关键词映射**：Node.js / Next.js / Vue / React / Svelte / Angular / Nuxt / Express / Nest 等框架/运行时在 README 中提及时，自动映射到 JavaScript。
+- **新增语言支持**：C、Lua 加入 `KNOWN_LANGUAGES` 列表。
+- **单元测试**：新增测试用例验证 C# 提取和 JavaScript 生态映射逻辑。
+
+### Changed
+- `extractReadmeLanguages()` 现在会将 JavaScript 框架/运行时关键词归一化为 JavaScript，提升语言一致性检查的准确性。
+
+
+## 0.0.6
 
 ### Added
 - Profile README 一致性信号层（ConsistencySignals）：比较 README 自述的语言/仓库 与 repos/skills 等行为数据。

@@ -265,6 +265,44 @@ describe("computeReadmeConsistency", () => {
     expect(cUnknown.readme_language_supported_ratio).toBeNull();
     expect(cUnknown.readme_vs_skills_consistency).toBe("unknown");
   });
+
+  it("correctly extracts C# and maps JavaScript ecosystem keywords", () => {
+    // 测试 C# 提取（修复 \bC#\b 的 bug）
+    const mdCSharp = "Fluent: PHP, C#, Python, C, C++";
+    const readmeCSharp = analyzeProfileReadme(mdCSharp);
+    const skillsCSharp = [
+      { lang: "PHP", weight: 0.5 },
+      { lang: "C#", weight: 0.3 },
+      { lang: "Python", weight: 0.2 }
+    ];
+    const repos: RepoRecord[] = [makeRepo("self", "a", 10, "2024-01-02T00:00:00Z")];
+
+    const cCSharp = computeReadmeConsistency(readmeCSharp, skillsCSharp, "self", repos);
+
+    // 验证 C#、C、C++ 都被正确提取
+    expect(cCSharp.readme_languages).toContain("C#");
+    expect(cCSharp.readme_languages).toContain("C");
+    expect(cCSharp.readme_languages).toContain("C++");
+    expect(cCSharp.readme_languages).toContain("PHP");
+    expect(cCSharp.readme_languages).toContain("Python");
+
+    // 验证一致性计算
+    expect(cCSharp.language_overlap).toContain("C#");
+    expect(cCSharp.language_overlap).toContain("PHP");
+    expect(cCSharp.language_overlap).toContain("Python");
+
+    // 测试 JavaScript 生态关键词映射
+    const mdJS = "I work with Node.js, Next.js, Vue, and React.";
+    const readmeJS = analyzeProfileReadme(mdJS);
+    const skillsJS = [{ lang: "JavaScript", weight: 0.8 }, { lang: "TypeScript", weight: 0.2 }];
+
+    const cJS = computeReadmeConsistency(readmeJS, skillsJS, "self", repos);
+
+    // 验证 Node.js / Next.js / Vue / React 都被映射到 JavaScript
+    expect(cJS.readme_languages).toContain("JavaScript");
+    expect(cJS.language_overlap).toContain("JavaScript");
+    expect(cJS.readme_vs_skills_consistency).toBe("strong");
+  });
 });
 
 
