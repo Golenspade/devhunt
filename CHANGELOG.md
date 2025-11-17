@@ -2,6 +2,20 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.0.6
+
+> 当前版本（pround=0, normal=0, shame=6）。
+
+### Added
+- Profile README 一致性信号层（ConsistencySignals）：比较 README 自述的语言/仓库 与 repos/skills 等行为数据。
+- `profile.json` 新增 `consistency` 字段，包含语言交集、支持比例和自有仓库提及情况。
+- 纯函数 `computeReadmeConsistency()` 及配套单元测试，覆盖强一致/明显不符/未知等场景。
+
+### Changed
+- `analyzeAll()` 现在会自动计算 README vs 行为数据的一致性信号，并写入 `profile.json`，作为第 3 层证据结构的一部分。
+
+
+
 ## 0.0.5
 
 > 当前版本（pround=0, normal=0, shame=5）。

@@ -10,7 +10,8 @@ import {
   parseTimezoneOffset,
   buildTimezone,
   buildSummaryEvidence,
-  analyzeProfileReadme
+  analyzeProfileReadme,
+  computeReadmeConsistency
 } from "./analyze";
 import type { RepoRecord, PRRecord } from "./analyze";
 
@@ -121,6 +122,7 @@ describe("analyze core metrics", () => {
     expect(result.profile.login).toBe("self");
     expect(result.profile.skills.length).toBeGreaterThan(0);
     expect(result.hoursHistogram.length).toBe(24);
+    expect(result.profile.consistency.readme_vs_skills_consistency).toBe("unknown");
   });
 });
 
@@ -130,6 +132,7 @@ describe("analyzeProfileReadme", () => {
     const result = analyzeProfileReadme(null);
     expect(result.style).toBe("none");
     expect(result.markdown).toBeNull();
+    expect(result.plain_text).toBeNull();
     expect(result.text_excerpt).toBeNull();
     expect(result.image_alt_texts).toEqual([]);
   });
@@ -138,6 +141,7 @@ describe("analyzeProfileReadme", () => {
     const result = analyzeProfileReadme("   \n\n  ");
     expect(result.style).toBe("empty");
     expect(result.markdown).toBe("");
+    expect(result.plain_text).toBe("");
     expect(result.text_excerpt).toBeNull();
     expect(result.image_alt_texts).toEqual([]);
   });
@@ -147,6 +151,7 @@ describe("analyzeProfileReadme", () => {
     const result = analyzeProfileReadme(md);
     expect(result.style).toBe("one_liner");
     expect(result.markdown).toBe(md);
+    expect(result.plain_text).toBe("I like deep neural nets.");
     expect(result.text_excerpt).toBe("I like deep neural nets.");
     expect(result.image_alt_texts).toEqual([]);
   });
@@ -160,6 +165,7 @@ describe("analyzeProfileReadme", () => {
 
     const result = analyzeProfileReadme(md);
     expect(result.style).toBe("visual_dashboard");
+    expect(result.plain_text).toBeNull();
     expect(result.text_excerpt).toBeNull();
     expect(result.image_alt_texts).toEqual([
       "GitHub Stats",
@@ -178,6 +184,7 @@ describe("analyzeProfileReadme", () => {
 
     const result = analyzeProfileReadme(md);
     expect(result.style).toBe("short_bio");
+    expect(result.plain_text).toContain("Hi, I'm Alice");
     expect(result.text_excerpt).toContain("Hi, I'm Alice");
     expect(result.image_alt_texts).toEqual([]);
   });
@@ -191,9 +198,74 @@ describe("analyzeProfileReadme", () => {
 
     const result = analyzeProfileReadme(md);
     expect(result.style).toBe("mixed");
+    expect(result.plain_text).toContain("full-stack developer");
     expect(result.text_excerpt).toContain("full-stack developer");
     expect(result.image_alt_texts).toEqual(["Badge"]);
   });
 });
+
+
+
+
+describe("computeReadmeConsistency", () => {
+  it("computes strong language consistency and matches owned repos", () => {
+    const md = [
+      "# Hi",
+      "",
+      "I work mainly with TypeScript and Rust.",
+      "",
+      "- https://github.com/self/a"
+    ].join("\n");
+
+    const readme = analyzeProfileReadme(md);
+    const skills = [
+      { lang: "TypeScript", weight: 0.6 },
+      { lang: "Rust", weight: 0.4 }
+    ];
+    const repos: RepoRecord[] = [
+      makeRepo("self", "a", 10, "2024-01-02T00:00:00Z"),
+      makeRepo("self", "b", 5, "2024-01-03T00:00:00Z")
+    ];
+
+    const c = computeReadmeConsistency(readme, skills, "self", repos);
+
+    expect(c.readme_languages).toEqual(expect.arrayContaining(["TypeScript", "Rust"]));
+    expect(c.metric_languages).toEqual(["TypeScript", "Rust"]);
+    expect(c.language_overlap).toEqual(expect.arrayContaining(["TypeScript", "Rust"]));
+    expect(c.readme_language_supported_ratio).toBeCloseTo(1, 5);
+    expect(c.readme_vs_skills_consistency).toBe("strong");
+
+    expect(c.owned_repos_mentioned).toEqual(expect.arrayContaining(["self/a"]));
+    expect(c.owned_repos_found_in_data).toEqual(["self/a"]);
+    expect(c.owned_repos_missing_in_data).toEqual([]);
+  });
+
+  it("computes poor or unknown consistency when README languages diverge or are absent", () => {
+    // README 声称使用 Haskell/Rust，但行为数据只有 TypeScript
+    const mdPoor = "I mainly use Haskell and Rust.";
+    const readmePoor = analyzeProfileReadme(mdPoor);
+    const skills: { lang: string; weight: number }[] = [{ lang: "TypeScript", weight: 1 }];
+    const repos: RepoRecord[] = [makeRepo("self", "a", 10, "2024-01-02T00:00:00Z")];
+
+    const cPoor = computeReadmeConsistency(readmePoor, skills, "self", repos);
+    expect(cPoor.readme_languages.length).toBeGreaterThan(0);
+    expect(cPoor.language_overlap.length).toBe(0);
+    expect(cPoor.readme_language_supported_ratio).toBeCloseTo(0, 5);
+    expect(cPoor.readme_vs_skills_consistency).toBe("poor");
+
+    // README 为纯仪表盘，没有明确语言自述
+    const mdUnknown = [
+      "![GitHub Stats](https://example.com/stats.svg)",
+      "![Top Langs](https://example.com/langs.svg)"
+    ].join("\n");
+    const readmeUnknown = analyzeProfileReadme(mdUnknown);
+    const cUnknown = computeReadmeConsistency(readmeUnknown, skills, "self", repos);
+
+    expect(cUnknown.readme_languages.length).toBe(0);
+    expect(cUnknown.readme_language_supported_ratio).toBeNull();
+    expect(cUnknown.readme_vs_skills_consistency).toBe("unknown");
+  });
+});
+
 
 

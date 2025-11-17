@@ -72,17 +72,45 @@ export type ProfileReadmeStyle =
 /**
  * Profile README 分析结果
  *
- * 包含 README 的风格分类、原始 Markdown 和提取的文本/图片信息。
+ * 包含 README 的风格分类、原始 Markdown、提取的纯文本和图片信息。
  */
 export interface ProfileReadmeAnalysis {
   /** README 风格分类 */
   style: ProfileReadmeStyle;
   /** 原始 Markdown 内容（如果存在） */
   markdown: string | null;
+  /** 去除 Markdown 格式后的完整纯文本 */
+  plain_text: string | null;
   /** 提取的文本摘要（前 400 字符） */
   text_excerpt: string | null;
   /** 图片的 alt 文本列表 */
   image_alt_texts: string[];
+}
+
+/**
+ * Profile README 与行为数据的一致性信号
+ *
+ * 对齐 pod.md 中的“第 3 层：一致性/真实性信号（consistency）”：
+ * - 比较 README 自述的语言/仓库 和 repos/skills 等行为数据
+ * - 不直接给“真/假”结论，只给“佐证强弱”和可回溯的证据字段
+ */
+export interface ConsistencySignals {
+  /** README 中自述的语言列表（从文本和图片 alt 文本中提取） */
+  readme_languages: string[];
+  /** 行为指标中出现的主语言列表（对应 skills.lang） */
+  metric_languages: string[];
+  /** 同时出现在自述和行为中的语言列表 */
+  language_overlap: string[];
+  /** 自述语言中被行为数据佐证的比例（0-1），无自述语言时为 null */
+  readme_language_supported_ratio: number | null;
+  /** README vs skills 的粗粒度一致性等级 */
+  readme_vs_skills_consistency: "strong" | "partial" | "poor" | "unknown";
+  /** README 中提到的自有仓库（owner/repo 格式，全部小写） */
+  owned_repos_mentioned: string[];
+  /** 出现在 repos 数据中的自有仓库（owner/repo 格式，全部小写） */
+  owned_repos_found_in_data: string[];
+  /** README 提到但在仓库列表中未找到的自有仓库（可能是私有仓库或访问受限） */
+  owned_repos_missing_in_data: string[];
 }
 
 /**
@@ -112,6 +140,8 @@ export interface ProfileJSON {
   summary_evidence: { sample_prs: string[]; sample_repos: string[] };
   /** Profile README 分析 */
   readme: ProfileReadmeAnalysis;
+  /** README 自述 vs 行为数据的一致性信号 */
+  consistency: ConsistencySignals;
 }
 
 /**
@@ -181,6 +211,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const timezone = buildTimezone(tzOverride, tzOffsetMinutes);
   const summary = buildSummaryEvidence(login, repos, prs);
   const readme = analyzeProfileReadme(profileReadmeMarkdown ?? null);
+  const consistency = computeReadmeConsistency(readme, langWeights, login, repos);
 
   return {
     profile: {
@@ -191,7 +222,8 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       uoi,
       external_pr_accept_rate: externalRate,
       summary_evidence: summary,
-      readme
+      readme,
+      consistency
     },
     hoursHistogram
   };
@@ -665,6 +697,7 @@ export function analyzeProfileReadme(markdown: string | null): ProfileReadmeAnal
     return {
       style: "none",
       markdown: null,
+      plain_text: null,
       text_excerpt: null,
       image_alt_texts: []
     };
@@ -678,6 +711,7 @@ export function analyzeProfileReadme(markdown: string | null): ProfileReadmeAnal
     return {
       style: "empty",
       markdown: "",
+      plain_text: "",
       text_excerpt: null,
       image_alt_texts: []
     };
@@ -713,6 +747,7 @@ export function analyzeProfileReadme(markdown: string | null): ProfileReadmeAnal
 
   const textCharCount = textLines.reduce((sum, l) => sum + l.length, 0);
   const imageCount = imageAltTexts.length;
+  const plainText = textLines.length === 0 ? null : textLines.join("\n");
 
   // 根据文本和图片数量判断风格
   let style: ProfileReadmeStyle;
@@ -732,13 +767,188 @@ export function analyzeProfileReadme(markdown: string | null): ProfileReadmeAnal
   }
 
   // 提取文本摘要（前 400 字符）
-  const textExcerpt = textLines.length === 0 ? null : textLines.join("\n").slice(0, 400);
+  const textExcerpt = plainText == null ? null : plainText.slice(0, 400);
 
   return {
     style,
     markdown: raw,
+    plain_text: plainText,
     text_excerpt: textExcerpt,
     image_alt_texts: imageAltTexts
+  };
+}
+
+const KNOWN_LANGUAGES = [
+  "TypeScript",
+  "JavaScript",
+  "Python",
+  "Go",
+  "Rust",
+  "Java",
+  "C++",
+  "C#",
+  "Ruby",
+  "PHP",
+  "Kotlin",
+  "Swift",
+  "Scala",
+  "Haskell",
+  "Elixir",
+  "Clojure",
+  "Dart",
+  "Objective-C",
+  "Shell",
+  "Bash"
+] as const;
+
+/**
+ * 从 Profile README 中提取自述的语言列表
+ *
+ * - 同时考虑纯文本和图片 alt 文本（很多 README 通过徽章展示语言）
+ * - 仅使用简单的基于关键字的启发式规则，保证可解释和可复现
+ */
+function extractReadmeLanguages(readme: ProfileReadmeAnalysis): string[] {
+  const texts: string[] = [];
+
+  if (readme.plain_text) {
+    texts.push(readme.plain_text);
+  }
+
+  if (readme.image_alt_texts && readme.image_alt_texts.length > 0) {
+    texts.push(readme.image_alt_texts.join(" "));
+  }
+
+  if (texts.length === 0 && readme.markdown) {
+    texts.push(readme.markdown);
+  }
+
+  if (texts.length === 0) {
+    return [];
+  }
+
+  const haystack = texts.join("\n");
+  const found = new Set<string>();
+
+  for (const lang of KNOWN_LANGUAGES) {
+    let pattern: RegExp;
+
+    switch (lang) {
+      case "C++":
+        pattern = /\bC\+\+\b/i;
+        break;
+      case "C#":
+        pattern = /\bC#\b/i;
+        break;
+      case "Objective-C":
+        pattern = /\bObjective-C\b/i;
+        break;
+      default:
+        pattern = new RegExp(`\\b${lang}\\b`, "i");
+        break;
+    }
+
+    if (pattern.test(haystack)) {
+      found.add(lang);
+    }
+  }
+
+  return Array.from(found);
+}
+
+/**
+ * 从 Profile README 中提取指向自有仓库的 GitHub 链接
+ *
+ * 仅识别形如 https://github.com/<login>/<repo> 的链接，并归一化为小写 owner/repo。
+ */
+function extractOwnedRepoMentions(readme: ProfileReadmeAnalysis, login: string): string[] {
+  const markdown = readme.markdown;
+  if (!markdown || !login) return [];
+
+  const ownerLower = login.toLowerCase();
+  const ownerPattern = ownerLower.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+  const regex = new RegExp(`https://github\\.com/${ownerPattern}/([A-Za-z0-9_.-]+)`, "gi");
+
+  const result = new Set<string>();
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(markdown)) !== null) {
+    const repoName = match[1];
+    if (!repoName) continue;
+    result.add(`${ownerLower}/${repoName.toLowerCase()}`);
+  }
+
+  return Array.from(result);
+}
+
+/**
+ * 计算 Profile README 与行为数据之间的一致性信号
+ *
+ * - 比较 README 自述的语言和 skills 中的语言分布
+ * - 对比 README 中提到的自有仓库与 repos 列表
+ * - 不给出“真/假”结论，只输出可回溯的信号和简单等级
+ */
+export function computeReadmeConsistency(
+  readme: ProfileReadmeAnalysis,
+  skills: { lang: string; weight: number }[],
+  login: string,
+  repos: RepoRecord[]
+): ConsistencySignals {
+  const readmeLanguages = extractReadmeLanguages(readme);
+  const metricLanguages = skills.map((s) => s.lang);
+  const metricLanguageSet = new Set(metricLanguages.map((l) => l.toLowerCase()));
+
+  const languageOverlap: string[] = [];
+  for (const lang of readmeLanguages) {
+    if (metricLanguageSet.has(lang.toLowerCase())) {
+      languageOverlap.push(lang);
+    }
+  }
+
+  let supportedRatio: number | null = null;
+  if (readmeLanguages.length > 0) {
+    supportedRatio = languageOverlap.length / readmeLanguages.length;
+  }
+
+  let consistencyLevel: ConsistencySignals["readme_vs_skills_consistency"];
+  if (supportedRatio == null) {
+    consistencyLevel = "unknown";
+  } else if (supportedRatio >= 0.8) {
+    consistencyLevel = "strong";
+  } else if (supportedRatio >= 0.4) {
+    consistencyLevel = "partial";
+  } else {
+    consistencyLevel = "poor";
+  }
+
+  const ownerLower = login.toLowerCase();
+  const ownedReposMentioned = extractOwnedRepoMentions(readme, login);
+
+  const ownedReposInDataSet = new Set(
+    repos
+      .filter((r) => r.owner.login.toLowerCase() === ownerLower)
+      .map((r) => `${ownerLower}/${r.name.toLowerCase()}`)
+  );
+
+  const ownedReposFoundInData: string[] = [];
+  const ownedReposMissingInData: string[] = [];
+
+  for (const full of ownedReposMentioned) {
+    if (ownedReposInDataSet.has(full)) {
+      ownedReposFoundInData.push(full);
+    } else {
+      ownedReposMissingInData.push(full);
+    }
+  }
+
+  return {
+    readme_languages: readmeLanguages,
+    metric_languages: metricLanguages,
+    language_overlap: languageOverlap,
+    readme_language_supported_ratio: supportedRatio,
+    readme_vs_skills_consistency: consistencyLevel,
+    owned_repos_mentioned: ownedReposMentioned,
+    owned_repos_found_in_data: ownedReposFoundInData,
+    owned_repos_missing_in_data: ownedReposMissingInData
   };
 }
 
