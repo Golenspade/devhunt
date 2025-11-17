@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-
+import { CliError, GitHubAuthError, GitHubNetworkError, GitHubNotFoundError } from "./errors";
 
 export interface GitHubClientOptions {
   token?: string | null;
@@ -39,26 +39,85 @@ export async function graphqlFromFile<T>(
   });
 
   if (result.error) {
-    throw new Error(`Failed to run gh: ${result.error.message}`);
+    const anyErr = result.error as any;
+    if (anyErr && anyErr.code === "ENOENT") {
+      throw new CliError('GitHub CLI "gh" not found in PATH. Please install GitHub CLI.');
+    }
+    throw new GitHubNetworkError(`Failed to run gh: ${result.error.message}`, result.error);
   }
 
   if (result.status !== 0 || result.signal) {
-    const msg = result.stderr || result.stdout;
-    throw new Error(`gh api graphql failed (exit ${result.status ?? "unknown"}): ${msg}`);
+    const msg = (result.stderr || result.stdout || "").trim();
+    throw classifyGhStatusError(result.status, msg);
   }
 
   const stdout = result.stdout || "";
   const json = JSON.parse(stdout) as GraphQLResponse<T>;
 
   if (json.errors && json.errors.length > 0) {
-    const msg = json.errors.map((e) => e.message).join("; ");
-    throw new Error(`GitHub GraphQL error: ${msg}`);
+    throw classifyGraphQlErrors(json.errors);
   }
 
   if (!json.data) {
-    throw new Error("GitHub GraphQL: missing data field");
+    throw new GitHubNetworkError("GitHub GraphQL: missing data field");
   }
 
   return json.data;
+}
+
+function classifyGhStatusError(status: number | null, msg: string): Error {
+  const text = msg || "";
+  const lower = text.toLowerCase();
+
+  if (
+    lower.includes("bad credentials") ||
+    lower.includes("must authenticate") ||
+    lower.includes("unauthorized") ||
+    lower.includes("forbidden") ||
+    lower.includes("resource not accessible by personal access token") ||
+    lower.includes("api rate limit exceeded")
+  ) {
+    return new GitHubAuthError(`GitHub authentication error: ${text}`, { status, msg: text });
+  }
+
+  if (
+    lower.includes("could not resolve host") ||
+    lower.includes("could not resolve") ||
+    lower.includes("name or service not known") ||
+    lower.includes("getaddrinfo enotfound") ||
+    lower.includes("connect etimedout") ||
+    lower.includes("network is unreachable") ||
+    lower.includes("tls handshake timeout")
+  ) {
+    return new GitHubNetworkError(`Network error talking to GitHub: ${text}`, {
+      status,
+      msg: text
+    });
+  }
+
+  return new GitHubNetworkError(
+    `gh api graphql failed (exit ${status ?? "unknown"}): ${text}`,
+    { status, msg: text }
+  );
+}
+
+function classifyGraphQlErrors(errors: { message: string }[]): Error {
+  const combined = errors.map((e) => e.message).join("; ");
+  const lower = combined.toLowerCase();
+
+  if (lower.includes("could not resolve to a user with the login")) {
+    return new GitHubNotFoundError(`GitHub user not found or inaccessible: ${combined}`, errors);
+  }
+
+  if (
+    lower.includes("bad credentials") ||
+    lower.includes("must authenticate") ||
+    lower.includes("resource not accessible by personal access token") ||
+    lower.includes("api rate limit exceeded")
+  ) {
+    return new GitHubAuthError(`GitHub authentication error: ${combined}`, errors);
+  }
+
+  return new GitHubAuthError(`GitHub GraphQL error: ${combined}`, errors);
 }
 

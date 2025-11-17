@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { graphqlFromFile } from "./gh";
 import type { GitHubClientOptions } from "./gh";
+import { GitHubNotFoundError } from "./errors";
 
 interface ReposConnection {
   user: {
@@ -59,16 +60,27 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   const { login } = options;
   const baseOut = options.outDir ?? join("out", login);
   const rawOut = join(baseOut, "raw");
+
+  console.log(`[devhunt] Scanning GitHub user ${login}...`);
+  console.log(`[devhunt] Raw output directory: ${rawOut}`);
+
   await mkdir(rawOut, { recursive: true });
 
   const repos = await fetchAllRepos(login, reposQueryPath, options);
   const prs = await fetchAllPRs(login, prsQueryPath, options);
 
+  console.log(`[devhunt] Fetched ${repos.length} repositories and ${prs.length} pull requests`);
+
   const reposJsonl = repos.map((r) => JSON.stringify(r)).join("\n") + (repos.length ? "\n" : "");
   const prsJsonl = prs.map((p) => JSON.stringify(p)).join("\n") + (prs.length ? "\n" : "");
 
+  console.log("[devhunt] Writing raw JSONL files...");
   await writeFile(join(rawOut, "repos.jsonl"), reposJsonl, "utf8");
   await writeFile(join(rawOut, "prs.jsonl"), prsJsonl, "utf8");
+  console.log("[devhunt] Raw data written to:");
+  console.log(`  - ${join(rawOut, "repos.jsonl")}`);
+  console.log(`  - ${join(rawOut, "prs.jsonl")}`);
+  console.log("[devhunt] Scan complete.");
 }
 
 async function fetchAllRepos(
@@ -87,8 +99,12 @@ async function fetchAllRepos(
       { login, after },
       options
     );
-    const conn = data.user?.repositories;
-    if (!conn) break;
+
+    if (!data.user) {
+      throw new GitHubNotFoundError(`GitHub user '${login}' not found or inaccessible`, data);
+    }
+
+    const conn = data.user.repositories;
 
     if (conn.nodes && conn.nodes.length > 0) {
       all.push(...conn.nodes);
@@ -115,8 +131,12 @@ async function fetchAllPRs(
       { login, after },
       options
     );
-    const conn = data.user?.pullRequests;
-    if (!conn) break;
+
+    if (!data.user) {
+      throw new GitHubNotFoundError(`GitHub user '${login}' not found or inaccessible`, data);
+    }
+
+    const conn = data.user.pullRequests;
 
     if (conn.nodes && conn.nodes.length > 0) {
       all.push(...conn.nodes);
