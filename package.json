@@ -1,0 +1,22 @@
+{
+  "name": "devhunt-mvp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "devhunt": "bun ./bin/devhunt.ts",
+    "scan": "bun ./bin/devhunt.ts scan",
+    "report": "bun ./bin/devhunt.ts report",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "vega": "latest",
+    "vega-lite": "latest"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "latest",
+    "@types/node": "latest"
+  }
+}
+

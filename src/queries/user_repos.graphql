@@ -1,0 +1,14 @@
+query Repos($login:String!, $after:String) {
+  user(login:$login) {
+    repositories(first:50, after:$after, ownerAffiliations:OWNER, orderBy:{field:PUSHED_AT, direction:DESC}) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        name isFork isArchived primaryLanguage { name }
+        stargazerCount forkCount watchers { totalCount }
+        licenseInfo { spdxId } createdAt pushedAt
+        owner { login }
+      }
+    }
+  }
+}
+

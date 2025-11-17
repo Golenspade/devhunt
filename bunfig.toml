@@ -1,0 +1,9 @@
+[install]
+exact = true
+
+[test]
+preload = ["./tsconfig.json"]
+
+[run]
+bun = true
+
