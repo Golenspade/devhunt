@@ -1,0 +1,67 @@
+query RepoCommits($owner:String!, $name:String!, $authorId:ID!, $since:GitTimestamp, $after:String) {
+  repository(owner:$owner, name:$name) {
+    name
+    owner { login }
+    isFork
+    defaultBranchRef {
+      name
+      target {
+        ... on Commit {
+          history(first:100, after:$after, author:{ id:$authorId }, since:$since) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              oid
+              authoredDate
+              committedDate
+              messageHeadline
+              messageBody
+              additions
+              deletions
+              changedFiles
+              parents { totalCount }
+              author {
+                name
+                email
+                user { login }
+              }
+              committer {
+                name
+                email
+                user { login }
+              }
+              associatedPullRequests(first:10) {
+                nodes {
+                  number
+                  url
+                  state
+                  createdAt
+                  mergedAt
+                  closedAt
+                  isCrossRepository
+                  baseRefName
+                  headRefName
+                  baseRepository {
+                    owner { login }
+                    name
+                    stargazerCount
+                    pullRequests(states:[OPEN, MERGED, CLOSED]) {
+                      totalCount
+                    }
+                    defaultBranchRef { name }
+                  }
+                  headRepository {
+                    owner { login }
+                    name
+                    stargazerCount
+                    isFork
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+

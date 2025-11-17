@@ -1,6 +1,7 @@
 export interface CLIOptions {
   token?: string;
   tz?: string;
+  window?: string;
 }
 
 export function parseArgs(
@@ -15,6 +16,8 @@ export function parseArgs(
       options.token = rest[++i];
     } else if (arg === "--tz") {
       options.tz = rest[++i];
+    } else if (arg === "--window") {
+      options.window = rest[++i];
     }
   }
 

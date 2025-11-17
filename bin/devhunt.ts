@@ -3,10 +3,11 @@
 import { scanUser } from "../src/scan";
 import { parseArgs } from "../src/cli";
 import { AnalysisError, DevhuntError } from "../src/errors";
+import { resolveSince } from "../src/timeWindow";
 
 function printUsage() {
   console.log(`Usage:
-  bun devhunt scan <login> --token $GITHUB_TOKEN
+  bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all]
   bun devhunt report <login> [--tz Asia/Shanghai]
 `);
 }
@@ -21,7 +22,12 @@ async function main() {
 
   switch (cmd) {
     case "scan": {
-      await scanUser({ login, token: options.token ?? process.env.GITHUB_TOKEN ?? undefined });
+      const since = resolveSince(options.window);
+      await scanUser({
+        login,
+        token: options.token ?? process.env.GITHUB_TOKEN ?? undefined,
+        since,
+      });
       break;
     }
     case "report": {

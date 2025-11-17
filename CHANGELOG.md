@@ -2,6 +2,24 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.0.4
+
+> 当前版本（pround=0, normal=0, shame=4）。
+
+### Added
+- `scan` 命令支持 `--window` 时间窗口参数（quarter/half/year/3y/all，默认 year），用于限制 commit 拉取范围。
+- `scan` 新增 `commits.jsonl` 输出，逐条记录用户在自有仓库默认分支上的 commit（含行数/文件数规模、邮箱域名分类、关联 PR 及母仓信息）。
+- 新增 `docs/cli-params.md`，集中说明 CLI 参数和开关。
+
+### Changed
+- 调整 `scan` 流程，先解析时间窗口，再并行拉取 repos / PR / commits，并在日志中打印仓库/PR/commit 总数。
+- 对邮箱解析逻辑进行抽象（`parseEmailInfo`），在 commit 记录中存储邮箱 domain 与 `.edu/.gov/.org` 分类。
+
+### Fixed
+- 修复 `scan.ts` 中辅助函数重复定义的问题，避免潜在的构建/类型冲突。
+- 为时间窗口解析与邮箱解析补充单元测试，确保行为稳定。
+
+
 ## 0.0.2
 
 > 当前版本（pround=0, normal=0, shame=2）。

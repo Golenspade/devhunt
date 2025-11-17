@@ -20,5 +20,14 @@ describe("CLI argument parsing", () => {
     expect(login).toBe("alice");
     expect((options as CLIOptions).tz).toBe("Asia/Shanghai");
   });
+
+  it("parses scan command with time window", () => {
+    const argv = ["scan", "bob", "--window", "year"];
+    const { cmd, login, options } = parseArgs(argv);
+
+    expect(cmd).toBe("scan");
+    expect(login).toBe("bob");
+    expect((options as CLIOptions).window).toBe("year");
+  });
 });
 
