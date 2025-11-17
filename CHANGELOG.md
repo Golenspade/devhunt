@@ -2,6 +2,26 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.0.5
+
+> 当前版本（pround=0, normal=0, shame=5）。
+
+### Added
+- Profile README 分析功能：识别 6 种风格（none / empty / one_liner / short_bio / visual_dashboard / mixed）。
+- Profile README 文本提取：去除 Markdown 格式，提取纯文本摘要（前 400 字符）。
+- Profile README 图片提取：从 `![alt](url)` 和 `<img alt="..." />` 提取 alt 文本。
+- `analyzeProfileReadme()` 函数及配套单元测试，覆盖常见 README 风格。
+- `profile.json` 新增 `readme` 字段，包含风格分类和提取的内容。
+
+### Changed
+- `scan` 命令现在会尝试拉取用户的 Profile README（`<login>/<login>` 仓库的 `README.md`）。
+- `report` 命令现在会读取 `profile_readme.md` 并将其分析结果写入 `profile.json`。
+- 为 `src/` 目录下的核心模块（analyze/scan/export/gh/charts/email/errors/timeWindow/cli）添加中文注释，补充设计理念和使用说明。
+
+### Fixed
+- 暂无（本次为功能+文档更新）。
+
+
 ## 0.0.4
 
 > 当前版本（pround=0, normal=0, shame=4）。

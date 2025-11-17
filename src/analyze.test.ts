@@ -9,7 +9,8 @@ import {
   computeTopRepos,
   parseTimezoneOffset,
   buildTimezone,
-  buildSummaryEvidence
+  buildSummaryEvidence,
+  analyzeProfileReadme
 } from "./analyze";
 import type { RepoRecord, PRRecord } from "./analyze";
 
@@ -122,4 +123,77 @@ describe("analyze core metrics", () => {
     expect(result.hoursHistogram.length).toBe(24);
   });
 });
+
+
+describe("analyzeProfileReadme", () => {
+  it("returns none when markdown is null", () => {
+    const result = analyzeProfileReadme(null);
+    expect(result.style).toBe("none");
+    expect(result.markdown).toBeNull();
+    expect(result.text_excerpt).toBeNull();
+    expect(result.image_alt_texts).toEqual([]);
+  });
+
+  it("classifies empty or whitespace markdown as empty", () => {
+    const result = analyzeProfileReadme("   \n\n  ");
+    expect(result.style).toBe("empty");
+    expect(result.markdown).toBe("");
+    expect(result.text_excerpt).toBeNull();
+    expect(result.image_alt_texts).toEqual([]);
+  });
+
+  it("detects one-liner style", () => {
+    const md = "I like deep neural nets.";
+    const result = analyzeProfileReadme(md);
+    expect(result.style).toBe("one_liner");
+    expect(result.markdown).toBe(md);
+    expect(result.text_excerpt).toBe("I like deep neural nets.");
+    expect(result.image_alt_texts).toEqual([]);
+  });
+
+  it("detects visual dashboard style and extracts image alt texts", () => {
+    const md = [
+      "![GitHub Stats](https://example.com/stats.svg)",
+      "![Top Langs](https://example.com/langs.svg)",
+      "<img src=\"https://example.com/other.svg\" alt=\"Other badge\" />"
+    ].join("\n");
+
+    const result = analyzeProfileReadme(md);
+    expect(result.style).toBe("visual_dashboard");
+    expect(result.text_excerpt).toBeNull();
+    expect(result.image_alt_texts).toEqual([
+      "GitHub Stats",
+      "Top Langs",
+      "Other badge"
+    ]);
+  });
+
+  it("detects short bio style", () => {
+    const md = [
+      "# Hi, I'm Alice",
+      "",
+      "I am a software engineer focusing on developer tools and infrastructure. ",
+      "Previously worked on large scale systems and enjoy mentoring and writing."
+    ].join("\n");
+
+    const result = analyzeProfileReadme(md);
+    expect(result.style).toBe("short_bio");
+    expect(result.text_excerpt).toContain("Hi, I'm Alice");
+    expect(result.image_alt_texts).toEqual([]);
+  });
+
+  it("falls back to mixed when text and images are both present", () => {
+    const md = [
+      "I'm a full-stack developer.",
+      "I build web apps and CLIs.",
+      "![Badge](https://example.com/badge.svg)"
+    ].join("\n");
+
+    const result = analyzeProfileReadme(md);
+    expect(result.style).toBe("mixed");
+    expect(result.text_excerpt).toContain("full-stack developer");
+    expect(result.image_alt_texts).toEqual(["Badge"]);
+  });
+});
+
 

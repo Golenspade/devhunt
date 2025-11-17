@@ -1,3 +1,24 @@
+/**
+ * 数据扫描模块
+ *
+ * 负责从 GitHub GraphQL API 拉取用户的原始数据，包括：
+ * - 仓库列表（repositories）
+ * - Pull Request 列表（pullRequests）
+ * - Commit 历史（commits on default branch）
+ * - Profile README（如果存在）
+ *
+ * 设计理念：
+ * - 只拉取公开数据，不克隆仓库到本地（MVP 版本）
+ * - 使用 GraphQL 分页机制，支持大量数据
+ * - 原始数据以 JSONL 格式存储，便于后续分析
+ * - 支持时间窗口参数，限制 commit 拉取范围
+ *
+ * 参考文档：
+ * - mvp.md 中的数据拉取策略（只用 GitHub API，不克隆仓库）
+ * - CHANGELOG.md v0.0.4 中的 commit 拉取功能
+ * - pod.md 中的"以人为本 & 全史视角"理念
+ */
+
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { graphqlFromFile } from "./gh";
@@ -5,6 +26,11 @@ import type { GitHubClientOptions } from "./gh";
 import { GitHubNotFoundError } from "./errors";
 import { parseEmailInfo } from "./email";
 
+/**
+ * GitHub GraphQL 仓库连接响应
+ *
+ * 对应 user.repositories 查询的返回结构。
+ */
 interface ReposConnection {
   user: {
     repositories: {
@@ -14,6 +40,11 @@ interface ReposConnection {
   } | null;
 }
 
+/**
+ * 仓库节点数据
+ *
+ * 包含仓库的基本信息和统计数据。
+ */
 interface RepoNode {
   name: string;
   isFork: boolean;
@@ -28,6 +59,11 @@ interface RepoNode {
   owner: { login: string };
 }
 
+/**
+ * GitHub GraphQL Pull Request 连接响应
+ *
+ * 对应 user.pullRequests 查询的返回结构。
+ */
 interface PRsConnection {
   user: {
     pullRequests: {
@@ -37,6 +73,11 @@ interface PRsConnection {
   } | null;
 }
 
+/**
+ * Pull Request 节点数据
+ *
+ * 包含 PR 的基本信息和代码变更统计。
+ */
 interface PRNode {
   createdAt: string;
   mergedAt: string | null;
@@ -49,10 +90,20 @@ interface PRNode {
   url: string;
 }
 
+/**
+ * 用户 ID 查询结果
+ *
+ * 用于获取用户的 GitHub 内部 ID（用于 commit 查询的 author 过滤）。
+ */
 interface UserIdResult {
   user: { id: string } | null;
 }
 
+/**
+ * 仓库 Commit 连接响应
+ *
+ * 对应 repository.defaultBranchRef.target.history 查询的返回结构。
+ */
 interface RepoCommitsConnection {
   repository: {
     name: string;
@@ -70,6 +121,15 @@ interface RepoCommitsConnection {
   } | null;
 }
 
+/**
+ * Commit 节点数据
+ *
+ * 包含 commit 的详细信息，包括：
+ * - 基本信息（SHA、时间、消息）
+ * - 代码变更统计（additions/deletions/changedFiles）
+ * - 作者和提交者信息（含邮箱）
+ * - 关联的 Pull Request（如果有）
+ */
 interface CommitNode {
   oid: string;
   authoredDate: string;
@@ -95,6 +155,19 @@ interface CommitNode {
   };
 }
 
+/**
+ * 关联的 Pull Request 节点数据
+ *
+ * 包含与 commit 关联的 PR 的详细信息，包括：
+ * - PR 基本信息（编号、URL、状态）
+ * - 分支信息（base/head）
+ * - 母仓信息（baseRepository/headRepository）
+ *
+ * 用于分析：
+ * - Commit 是否通过 PR 合并
+ * - PR 是否为跨仓贡献（isCrossRepository）
+ * - 母仓的影响力（stargazerCount）
+ */
 interface AssociatedPullRequestNode {
   number: number;
   url: string;
@@ -120,23 +193,44 @@ interface AssociatedPullRequestNode {
   } | null;
 }
 
+/**
+ * Commit 记录（输出到 commits.jsonl 的格式）
+ *
+ * 这是经过处理和增强的 commit 数据，包含：
+ * - 仓库信息（含是否为自有仓库的标记）
+ * - Commit 基本信息（SHA、时间、消息）
+ * - 代码变更统计
+ * - 作者信息（含邮箱域名和 TLD 分类）
+ * - 关联的 PR 信息（含母仓详情）
+ *
+ * 参考文档：CHANGELOG.md v0.0.4 中的 commits.jsonl 输出格式
+ */
 interface CommitRecord {
+  /** 仓库信息 */
   repo: {
     owner: string;
     name: string;
-    isOwn: boolean;
+    isOwn: boolean;  // 是否为用户自有仓库
   };
+  /** Commit SHA */
   sha: string;
+  /** 作者时间（authoredDate） */
   authoredAt: string;
+  /** 提交时间（committedDate） */
   committedAt: string;
+  /** Commit 消息标题 */
   messageHeadline: string;
+  /** Commit 消息正文 */
   messageBody: string | null;
+  /** 是否为 merge commit（parents > 1） */
   isMerge: boolean;
+  /** 代码变更统计 */
   stats: {
     additions: number;
     deletions: number;
     changedFiles: number;
   };
+  /** 作者信息（含邮箱分类） */
   author: {
     login: string | null;
     name: string | null;
@@ -144,6 +238,7 @@ interface CommitRecord {
     emailDomain: string | null;
     emailTld: ".edu" | ".gov" | ".org" | "other";
   };
+  /** 关联的 PR 列表（含母仓详情） */
   associatedPRs: {
     number: number;
     url: string;
@@ -172,18 +267,69 @@ interface CommitRecord {
   }[];
 }
 
+/**
+ * Profile README 查询结果
+ *
+ * 对应查询用户的 Profile README 仓库（<username>/<username>）。
+ */
+interface ProfileReadmeQuery {
+  repository: {
+    name: string;
+    owner: { login: string };
+    isPrivate: boolean;
+    defaultBranchRef: { name: string } | null;
+    object: { text: string | null } | null;
+  } | null;
+}
 
+/**
+ * 扫描选项
+ *
+ * 传递给 scanUser 函数的参数。
+ */
 export interface ScanOptions extends GitHubClientOptions {
+  /** GitHub 用户名 */
   login: string;
+  /** 输出目录（默认为 out/<login>） */
   outDir?: string;
+  /** Commit 拉取的起始时间（ISO 8601 格式，null 表示不限制） */
   since?: string | null;
 }
 
+// GraphQL 查询文件路径
 const reposQueryPath = new URL("./queries/user_repos.graphql", import.meta.url).pathname;
 const prsQueryPath = new URL("./queries/user_prs.graphql", import.meta.url).pathname;
 const userIdQueryPath = new URL("./queries/user_id.graphql", import.meta.url).pathname;
 const repoCommitsQueryPath = new URL("./queries/repo_commits.graphql", import.meta.url).pathname;
+const profileReadmeQueryPath = new URL("./queries/profile_readme.graphql", import.meta.url).pathname;
 
+/**
+ * 扫描 GitHub 用户的所有公开数据
+ *
+ * 这是数据拉取的主入口函数，执行以下步骤：
+ * 1. 创建输出目录（out/<login>/raw）
+ * 2. 并行拉取：用户 ID、仓库列表、PR 列表、Profile README
+ * 3. 串行拉取：所有仓库的 commit 历史（需要用户 ID 作为过滤条件）
+ * 4. 将原始数据写入 JSONL 文件
+ *
+ * @param options - 扫描选项（包含用户名、输出目录、时间窗口等）
+ *
+ * 输出文件：
+ * - out/<login>/raw/repos.jsonl - 仓库列表
+ * - out/<login>/raw/prs.jsonl - PR 列表
+ * - out/<login>/raw/commits.jsonl - Commit 历史
+ * - out/<login>/raw/profile_readme.md - Profile README（如果存在）
+ *
+ * 设计理念：
+ * - 并行拉取独立数据源，提高效率
+ * - Commit 拉取需要用户 ID，因此在第二阶段执行
+ * - 使用 JSONL 格式存储，便于流式处理和增量更新
+ * - 支持时间窗口参数（since），限制 commit 拉取范围
+ *
+ * 参考文档：
+ * - mvp.md 中的数据拉取策略
+ * - CHANGELOG.md v0.0.4 中的 commits.jsonl 输出
+ */
 export async function scanUser(options: ScanOptions): Promise<void> {
   const { login } = options;
   const baseOut = options.outDir ?? join("out", login);
@@ -199,37 +345,74 @@ export async function scanUser(options: ScanOptions): Promise<void> {
     console.log("[devhunt] Commit time window: full history");
   }
 
+  // 创建输出目录
   await mkdir(rawOut, { recursive: true });
 
-  const [authorId, repos, prs] = await Promise.all([
+  // 第一阶段：并行拉取独立数据源
+  const [authorId, repos, prs, profileReadme] = await Promise.all([
     fetchUserId(login, options),
     fetchAllRepos(login, reposQueryPath, options),
     fetchAllPRs(login, prsQueryPath, options),
+    fetchProfileReadme(login, options),
   ]);
 
+  // 第二阶段：拉取 commit 历史（需要 authorId 作为过滤条件）
   const commits = await fetchAllCommits(login, authorId, repos, since, options);
 
   console.log(
     `[devhunt] Fetched ${repos.length} repositories, ${prs.length} pull requests and ${commits.length} commits`,
   );
 
+  // 转换为 JSONL 格式
   const reposJsonl = repos.map((r) => JSON.stringify(r)).join("\n") + (repos.length ? "\n" : "");
   const prsJsonl = prs.map((p) => JSON.stringify(p)).join("\n") + (prs.length ? "\n" : "");
   const commitsJsonl =
     commits.map((c) => JSON.stringify(c)).join("\n") + (commits.length ? "\n" : "");
+  const profileReadmeText = profileReadme && profileReadme.trim().length > 0 ? profileReadme : null;
 
+  // 写入文件
   console.log("[devhunt] Writing raw JSONL files...");
   await writeFile(join(rawOut, "repos.jsonl"), reposJsonl, "utf8");
   await writeFile(join(rawOut, "prs.jsonl"), prsJsonl, "utf8");
   await writeFile(join(rawOut, "commits.jsonl"), commitsJsonl, "utf8");
+  if (profileReadmeText) {
+    await writeFile(join(rawOut, "profile_readme.md"), profileReadmeText, "utf8");
+  }
+
   console.log("[devhunt] Raw data written to:");
   console.log(`  - ${join(rawOut, "repos.jsonl")}`);
   console.log(`  - ${join(rawOut, "prs.jsonl")}`);
   console.log(`  - ${join(rawOut, "commits.jsonl")}`);
+  if (profileReadmeText) {
+    console.log(`  - ${join(rawOut, "profile_readme.md")}`);
+  } else {
+    console.log("  - (no public profile README found)");
+  }
+
   console.log("[devhunt] Scan complete.");
 }
 
-
+/**
+ * 拉取用户的所有仓库
+ *
+ * 使用 GraphQL 分页机制，拉取用户的所有公开仓库（包括 fork 和 archived）。
+ *
+ * @param login - GitHub 用户名
+ * @param queryPath - GraphQL 查询文件路径
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns 仓库节点数组
+ *
+ * 分页逻辑：
+ * 1. 初始请求：after = null
+ * 2. 检查 pageInfo.hasNextPage
+ * 3. 如果有下一页，使用 pageInfo.endCursor 作为 after 参数
+ * 4. 重复直到没有下一页
+ *
+ * 设计理念：
+ * - 拉取所有仓库（不过滤 fork 和 archived），便于后续分析
+ * - 使用 GraphQL 分页，避免单次请求数据过大
+ * - 如果用户不存在，抛出 GitHubNotFoundError
+ */
 async function fetchAllRepos(
   login: string,
   queryPath: string,
@@ -238,7 +421,7 @@ async function fetchAllRepos(
   const all: RepoNode[] = [];
   let after: string | null = null;
 
-  // Paginate until no more pages
+  // 分页拉取所有仓库
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const data: ReposConnection = await graphqlFromFile<ReposConnection>(
@@ -264,6 +447,24 @@ async function fetchAllRepos(
   return all;
 }
 
+/**
+ * 拉取用户的所有 Pull Request
+ *
+ * 使用 GraphQL 分页机制，拉取用户创建的所有 PR（包括自有仓库和外部仓库）。
+ *
+ * @param login - GitHub 用户名
+ * @param queryPath - GraphQL 查询文件路径
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns PR 节点数组
+ *
+ * 分页逻辑：
+ * 同 fetchAllRepos，使用 pageInfo.hasNextPage 和 endCursor 进行分页。
+ *
+ * 设计理念：
+ * - 拉取所有 PR（不区分 open/closed/merged），便于后续分析
+ * - PR 数据用于计算 UOI、活跃时段、外部 PR 合并率等指标
+ * - 如果用户不存在，抛出 GitHubNotFoundError
+ */
 async function fetchAllPRs(
   login: string,
   queryPath: string,
@@ -272,6 +473,7 @@ async function fetchAllPRs(
   const all: PRNode[] = [];
   let after: string | null = null;
 
+  // 分页拉取所有 PR
   while (true) {
     const data: PRsConnection = await graphqlFromFile<PRsConnection>(
       queryPath,
@@ -296,6 +498,70 @@ async function fetchAllPRs(
   return all;
 }
 
+/**
+ * 拉取用户的 Profile README
+ *
+ * 尝试拉取用户的 Profile README（位于 <username>/<username> 仓库的 README.md）。
+ *
+ * @param login - GitHub 用户名
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns Profile README 的 Markdown 内容，如果不存在或为空则返回 null
+ *
+ * 处理逻辑：
+ * 1. 查询 <username>/<username> 仓库的 README.md
+ * 2. 如果仓库不存在或为私有，返回 null
+ * 3. 如果 README.md 不存在或为空，返回 null
+ * 4. 如果查询失败（如网络错误），打印警告并返回 null（不中断扫描）
+ *
+ * 设计理念：
+ * - Profile README 是可选的，不应该因为拉取失败而中断整个扫描
+ * - 使用 try-catch 捕获错误，确保扫描流程的健壮性
+ * - Profile README 用于分析用户的自我介绍风格（参考 analyze.ts）
+ */
+async function fetchProfileReadme(
+  login: string,
+  options: GitHubClientOptions,
+): Promise<string | null> {
+  try {
+    const data: ProfileReadmeQuery = await graphqlFromFile<ProfileReadmeQuery>(
+      profileReadmeQueryPath,
+      { login },
+      options,
+    );
+
+    const repo = data.repository;
+    if (!repo || repo.isPrivate) {
+      return null;
+    }
+
+    const obj = repo.object;
+    const text = obj && typeof obj.text === "string" ? obj.text : null;
+    if (text && text.trim().length > 0) {
+      return text;
+    }
+
+    return null;
+  } catch (error) {
+    const message = (error as Error)?.message ?? String(error);
+    console.warn(`[devhunt] Warning: failed to fetch profile README for ${login}: ${message}`);
+    return null;
+  }
+}
+
+/**
+ * 拉取用户的 GitHub 内部 ID
+ *
+ * 获取用户的 GitHub 内部 ID（用于 commit 查询的 author 过滤）。
+ *
+ * @param login - GitHub 用户名
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns 用户的 GitHub 内部 ID（如 "MDQ6VXNlcjEyMzQ1Njc="）
+ *
+ * 设计理念：
+ * - GitHub GraphQL API 的 commit 查询需要使用内部 ID 作为 author 过滤条件
+ * - 内部 ID 是 Base64 编码的字符串，不同于用户名
+ * - 如果用户不存在，抛出 GitHubNotFoundError
+ */
 async function fetchUserId(login: string, options: GitHubClientOptions): Promise<string> {
   const data: UserIdResult = await graphqlFromFile<UserIdResult>(userIdQueryPath, { login }, options);
 
@@ -306,6 +572,24 @@ async function fetchUserId(login: string, options: GitHubClientOptions): Promise
   return data.user.id;
 }
 
+/**
+ * 拉取所有仓库的 commit 历史
+ *
+ * 遍历所有仓库，拉取用户在每个仓库的 commit 历史。
+ *
+ * @param login - GitHub 用户名
+ * @param authorId - 用户的 GitHub 内部 ID（用于过滤 commit）
+ * @param repos - 仓库列表
+ * @param since - Commit 拉取的起始时间（ISO 8601 格式，null 表示不限制）
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns 所有仓库的 commit 记录数组
+ *
+ * 设计理念：
+ * - 串行拉取每个仓库的 commit（避免并发请求过多导致 rate limit）
+ * - 使用 authorId 过滤，只拉取用户自己的 commit
+ * - 支持时间窗口参数（since），限制拉取范围
+ * - 空仓库（无 commit）不会影响整体流程
+ */
 async function fetchAllCommits(
   login: string,
   authorId: string,
@@ -315,6 +599,7 @@ async function fetchAllCommits(
 ): Promise<CommitRecord[]> {
   const all: CommitRecord[] = [];
 
+  // 串行拉取每个仓库的 commit
   for (const repo of repos) {
     const repoCommits = await fetchCommitsForRepo(login, authorId, repo, since, options);
     if (repoCommits.length > 0) {
@@ -325,6 +610,32 @@ async function fetchAllCommits(
   return all;
 }
 
+/**
+ * 拉取单个仓库的 commit 历史
+ *
+ * 使用 GraphQL 分页机制，拉取指定仓库的 default branch 上的所有 commit。
+ *
+ * @param login - GitHub 用户名
+ * @param authorId - 用户的 GitHub 内部 ID（用于过滤 commit）
+ * @param repo - 仓库节点
+ * @param since - Commit 拉取的起始时间（ISO 8601 格式，null 表示不限制）
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns 该仓库的 commit 记录数组
+ *
+ * 分页逻辑：
+ * 同 fetchAllRepos，使用 pageInfo.hasNextPage 和 endCursor 进行分页。
+ *
+ * 处理逻辑：
+ * 1. 查询 repository.defaultBranchRef.target.history
+ * 2. 使用 authorId 过滤，只拉取用户自己的 commit
+ * 3. 如果仓库没有 default branch（如空仓库），直接返回空数组
+ * 4. 将每个 commit 节点转换为 CommitRecord 格式
+ *
+ * 设计理念：
+ * - 只拉取 default branch 的 commit（MVP 版本，参考 mvp.md）
+ * - 使用 authorId 过滤，避免拉取其他贡献者的 commit
+ * - 支持时间窗口参数（since），限制拉取范围
+ */
 async function fetchCommitsForRepo(
   login: string,
   authorId: string,
@@ -336,6 +647,7 @@ async function fetchCommitsForRepo(
   let after: string | null = null;
   const ownerLogin = repo.owner.login;
 
+  // 分页拉取该仓库的 commit
   while (true) {
     const data: RepoCommitsConnection = await graphqlFromFile<RepoCommitsConnection>(
       repoCommitsQueryPath,
@@ -347,6 +659,7 @@ async function fetchCommitsForRepo(
     const defaultBranch = repository?.defaultBranchRef;
     const target = defaultBranch?.target;
 
+    // 如果仓库没有 default branch，直接返回
     if (!repository || !defaultBranch || !target) {
       break;
     }
@@ -366,17 +679,44 @@ async function fetchCommitsForRepo(
   return all;
 }
 
+/**
+ * 将 GraphQL commit 节点转换为 CommitRecord 格式
+ *
+ * 这是数据转换函数，将 GitHub GraphQL API 返回的 commit 节点转换为
+ * devhunt 的 CommitRecord 格式（用于写入 commits.jsonl）。
+ *
+ * @param login - GitHub 用户名（用于判断是否为自有仓库）
+ * @param repository - 仓库信息
+ * @param node - Commit 节点
+ * @returns CommitRecord 对象
+ *
+ * 数据增强：
+ * 1. 添加 isOwn 字段（是否为用户自有仓库）
+ * 2. 解析作者邮箱，提取 emailDomain 和 emailTld
+ * 3. 提取关联的 PR 信息（含母仓详情）
+ * 4. 标记 isMerge（是否为 merge commit）
+ *
+ * 设计理念：
+ * - 将原始 GraphQL 数据转换为更易于分析的格式
+ * - 添加派生字段（如 isOwn、emailTld），避免后续重复计算
+ * - 保留完整的 PR 信息，便于分析 commit 的上下文
+ *
+ * 参考文档：CHANGELOG.md v0.0.4 中的 commits.jsonl 格式
+ */
 function toCommitRecord(login: string, repository: RepoCommitsConnection["repository"], node: CommitNode): CommitRecord {
   const ownerLogin = repository?.owner.login ?? "";
   const repoName = repository?.name ?? "";
   const isOwn = ownerLogin.toLowerCase() === login.toLowerCase();
 
+  // 提取作者信息
   const authorLogin = node.author?.user?.login ?? null;
   const authorName = node.author?.name ?? null;
   const authorEmail = node.author?.email ?? null;
 
+  // 解析邮箱域名和 TLD
   const { emailDomain, emailTld } = parseEmailInfo(authorEmail);
 
+  // 提取关联的 PR 信息
   const associatedPRs = node.associatedPullRequests?.nodes?.map((pr) => {
     const baseRepo = pr.baseRepository
       ? {

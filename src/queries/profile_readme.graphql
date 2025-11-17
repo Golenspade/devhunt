@@ -1,0 +1,18 @@
+query ProfileReadme($login: String!) {
+  repository(owner: $login, name: $login) {
+    name
+    owner {
+      login
+    }
+    isPrivate
+    defaultBranchRef {
+      name
+    }
+    object(expression: "HEAD:README.md") {
+      ... on Blob {
+        text
+      }
+    }
+  }
+}
+
