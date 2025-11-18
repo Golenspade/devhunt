@@ -100,6 +100,105 @@ interface UserIdResult {
 }
 
 /**
+ * GitHub GraphQL 贡献统计响应
+ *
+ * 对应 user.contributionsCollection 查询的返回结构。
+ *
+ * 设计理念：
+ * - 获取用户在指定时间范围内的完整贡献统计
+ * - 包含 commits、issues、PRs、reviews 等多维度数据
+ * - 支持贡献日历（热力图）数据
+ * - 可用于评估用户活跃度和贡献模式
+ */
+interface ContributionsCollectionResult {
+  user: {
+    contributionsCollection: ContributionsCollectionNode;
+  } | null;
+}
+
+/**
+ * 贡献统计节点数据
+ *
+ * 包含用户在指定时间范围内的所有贡献统计信息。
+ *
+ * 字段说明：
+ * - totalCommitContributions: 总提交数
+ * - totalIssueContributions: 总 Issue 数（创建的）
+ * - totalPullRequestContributions: 总 PR 数（创建的）
+ * - totalPullRequestReviewContributions: 总 PR Review 数
+ * - totalRepositoriesWithContributedCommits: 贡献过 commit 的仓库数
+ * - totalRepositoriesWithContributedIssues: 创建过 issue 的仓库数
+ * - totalRepositoriesWithContributedPullRequests: 创建过 PR 的仓库数
+ * - totalRepositoriesWithContributedPullRequestReviews: 进行过 PR review 的仓库数
+ * - totalRepositoryContributions: 创建的仓库数
+ * - restrictedContributionsCount: 私有仓库贡献数（如果用户启用了私有贡献计数）
+ * - contributionCalendar: 贡献日历（热力图数据）
+ * - startedAt: 统计开始时间
+ * - endedAt: 统计结束时间
+ */
+interface ContributionsCollectionNode {
+  totalCommitContributions: number;
+  totalIssueContributions: number;
+  totalPullRequestContributions: number;
+  totalPullRequestReviewContributions: number;
+  totalRepositoriesWithContributedCommits: number;
+  totalRepositoriesWithContributedIssues: number;
+  totalRepositoriesWithContributedPullRequests: number;
+  totalRepositoriesWithContributedPullRequestReviews: number;
+  totalRepositoryContributions: number;
+  restrictedContributionsCount: number;
+  contributionCalendar: ContributionCalendar;
+  startedAt: string;
+  endedAt: string;
+}
+
+/**
+ * 贡献日历数据
+ *
+ * 包含用户的贡献热力图数据，按周和天组织。
+ *
+ * 字段说明：
+ * - totalContributions: 总贡献数（所有类型的贡献总和）
+ * - weeks: 按周组织的贡献数据
+ * - colors: 热力图颜色列表（从低到高）
+ */
+interface ContributionCalendar {
+  totalContributions: number;
+  weeks: ContributionCalendarWeek[];
+  colors: string[];
+}
+
+/**
+ * 贡献日历周数据
+ *
+ * 包含一周内每天的贡献数据。
+ *
+ * 字段说明：
+ * - contributionDays: 该周内每天的贡献数据
+ */
+interface ContributionCalendarWeek {
+  contributionDays: ContributionCalendarDay[];
+}
+
+/**
+ * 贡献日历天数据
+ *
+ * 包含某一天的贡献统计。
+ *
+ * 字段说明：
+ * - date: 日期（YYYY-MM-DD 格式）
+ * - contributionCount: 该天的贡献数
+ * - color: 该天在热力图中的颜色
+ * - contributionLevel: 贡献等级（NONE, FIRST_QUARTILE, SECOND_QUARTILE, THIRD_QUARTILE, FOURTH_QUARTILE）
+ */
+interface ContributionCalendarDay {
+  date: string;
+  contributionCount: number;
+  color: string;
+  contributionLevel: string;
+}
+
+/**
  * 仓库 Commit 连接响应
  *
  * 对应 repository.defaultBranchRef.target.history 查询的返回结构。
@@ -302,6 +401,7 @@ const prsQueryPath = new URL("./queries/user_prs.graphql", import.meta.url).path
 const userIdQueryPath = new URL("./queries/user_id.graphql", import.meta.url).pathname;
 const repoCommitsQueryPath = new URL("./queries/repo_commits.graphql", import.meta.url).pathname;
 const profileReadmeQueryPath = new URL("./queries/profile_readme.graphql", import.meta.url).pathname;
+const contributionsQueryPath = new URL("./queries/user_contributions.graphql", import.meta.url).pathname;
 
 /**
  * 扫描 GitHub 用户的所有公开数据
@@ -348,19 +448,24 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   // 创建输出目录
   await mkdir(rawOut, { recursive: true });
 
+  // 计算贡献统计的时间范围（默认为最近一年）
+  const contributionsTo = new Date().toISOString();
+  const contributionsFrom = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+
   // 第一阶段：并行拉取独立数据源
-  const [authorId, repos, prs, profileReadme] = await Promise.all([
+  const [authorId, repos, prs, profileReadme, contributions] = await Promise.all([
     fetchUserId(login, options),
     fetchAllRepos(login, reposQueryPath, options),
     fetchAllPRs(login, prsQueryPath, options),
     fetchProfileReadme(login, options),
+    fetchContributionsCollection(login, contributionsFrom, contributionsTo, options),
   ]);
 
   // 第二阶段：拉取 commit 历史（需要 authorId 作为过滤条件）
   const commits = await fetchAllCommits(login, authorId, repos, since, options);
 
   console.log(
-    `[devhunt] Fetched ${repos.length} repositories, ${prs.length} pull requests and ${commits.length} commits`,
+    `[devhunt] Fetched ${repos.length} repositories, ${prs.length} pull requests, ${commits.length} commits and contributions data`,
   );
 
   // 转换为 JSONL 格式
@@ -368,6 +473,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   const prsJsonl = prs.map((p) => JSON.stringify(p)).join("\n") + (prs.length ? "\n" : "");
   const commitsJsonl =
     commits.map((c) => JSON.stringify(c)).join("\n") + (commits.length ? "\n" : "");
+  const contributionsJson = JSON.stringify(contributions, null, 2);
   const profileReadmeText = profileReadme && profileReadme.trim().length > 0 ? profileReadme : null;
 
   // 写入文件
@@ -375,6 +481,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   await writeFile(join(rawOut, "repos.jsonl"), reposJsonl, "utf8");
   await writeFile(join(rawOut, "prs.jsonl"), prsJsonl, "utf8");
   await writeFile(join(rawOut, "commits.jsonl"), commitsJsonl, "utf8");
+  await writeFile(join(rawOut, "contributions.json"), contributionsJson, "utf8");
   if (profileReadmeText) {
     await writeFile(join(rawOut, "profile_readme.md"), profileReadmeText, "utf8");
   }
@@ -383,6 +490,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   console.log(`  - ${join(rawOut, "repos.jsonl")}`);
   console.log(`  - ${join(rawOut, "prs.jsonl")}`);
   console.log(`  - ${join(rawOut, "commits.jsonl")}`);
+  console.log(`  - ${join(rawOut, "contributions.json")}`);
   if (profileReadmeText) {
     console.log(`  - ${join(rawOut, "profile_readme.md")}`);
   } else {
@@ -570,6 +678,48 @@ async function fetchUserId(login: string, options: GitHubClientOptions): Promise
   }
 
   return data.user.id;
+}
+
+/**
+ * 拉取用户的贡献统计
+ *
+ * 使用 GraphQL 查询获取用户的贡献统计数据（commits、PRs、issues、reviews 等）。
+ *
+ * @param login - GitHub 用户名
+ * @param from - 统计开始时间（ISO 8601 格式，null 表示默认为一年前）
+ * @param to - 统计结束时间（ISO 8601 格式，null 表示默认为当前时间）
+ * @param options - GitHub 客户端选项（token 等）
+ * @returns 贡献统计数据
+ *
+ * 设计理念：
+ * - 获取完整的贡献热力图数据（contributionCalendar）
+ * - 统计 Issue/PR/Review 贡献数量
+ * - 可视化活跃度趋势
+ * - 支持自定义时间范围（默认为最近一年）
+ * - 如果用户不存在，抛出 GitHubNotFoundError
+ *
+ * 注意：
+ * - contributionsCollection 不是分页接口，一次查询返回完整数据
+ * - 时间范围建议不超过一年，避免数据量过大
+ * - restrictedContributionsCount 只有在用户启用私有贡献计数时才非零
+ */
+async function fetchContributionsCollection(
+  login: string,
+  from: string | null,
+  to: string | null,
+  options: GitHubClientOptions,
+): Promise<ContributionsCollectionNode> {
+  const data: ContributionsCollectionResult = await graphqlFromFile<ContributionsCollectionResult>(
+    contributionsQueryPath,
+    { login, from, to },
+    options,
+  );
+
+  if (!data.user) {
+    throw new GitHubNotFoundError(`GitHub user '${login}' not found or inaccessible`, data);
+  }
+
+  return data.user.contributionsCollection;
 }
 
 /**

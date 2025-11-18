@@ -2,9 +2,40 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
-## 0.0.7
+## 0.0.8
 
-> 当前版本（pround=0, normal=0, shame=7）。
+> 当前版本（pround=0, normal=0, shame=8）。
+
+### Added
+- **贡献统计数据拉取**：新增 `contributionsCollection` 数据拉取功能，获取用户在最近一年内的完整贡献统计。
+- **贡献日历（热力图）数据**：包含按天统计的贡献数据，支持可视化活跃度趋势。
+- **多维度贡献统计**：
+  - `totalCommitContributions` - 总提交数
+  - `totalIssueContributions` - 总 Issue 数
+  - `totalPullRequestContributions` - 总 PR 数
+  - `totalPullRequestReviewContributions` - 总 PR Review 数
+  - `totalRepositoriesWithContributedCommits` - 贡献过 commit 的仓库数
+  - `totalRepositoriesWithContributedIssues` - 创建过 issue 的仓库数
+  - `totalRepositoriesWithContributedPullRequests` - 创建过 PR 的仓库数
+  - `totalRepositoriesWithContributedPullRequestReviews` - 进行过 PR review 的仓库数
+  - `totalRepositoryContributions` - 创建的仓库数
+  - `restrictedContributionsCount` - 私有仓库贡献数（如果用户启用了私有贡献计数）
+- **新增 GraphQL 查询文件**：`src/queries/user_contributions.graphql`，支持自定义时间范围（`from`/`to` 参数）。
+- **新增输出文件**：`out/<login>/raw/contributions.json`，存储完整的贡献统计数据（JSON 格式）。
+
+### Changed
+- `scanUser()` 函数现在会并行拉取贡献统计数据，与 repos/PRs/profile README 一起获取。
+- 贡献统计默认时间范围为最近一年（从当前时间往前推 365 天）。
+- 控制台输出现在会显示 "contributions data" 已拉取。
+
+### Technical Details
+- 新增 TypeScript 接口：`ContributionsCollectionResult`、`ContributionsCollectionNode`、`ContributionCalendar`、`ContributionCalendarWeek`、`ContributionCalendarDay`。
+- 新增辅助函数：`fetchContributionsCollection()`，遵循现有的 `fetchAllRepos()` 等函数的模式。
+- 贡献统计不是分页接口，一次查询返回完整数据。
+- 已通过真实用户验证（Golenspade, pablo-abc）。
+
+
+## 0.0.7
 
 ### Fixed
 - **C# 语言提取 bug**：修复 `/\bC#\b/i` 正则无法匹配的问题（`#` 不是单词字符，`\b` 后边界失效），改用前瞻断言 `/\bC#(?=\s|,|;|\.|$)/i`。

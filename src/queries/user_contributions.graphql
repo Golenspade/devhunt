@@ -1,0 +1,31 @@
+query Contributions($login:String!, $from:DateTime, $to:DateTime) {
+  user(login:$login) {
+    contributionsCollection(from:$from, to:$to) {
+      totalCommitContributions
+      totalIssueContributions
+      totalPullRequestContributions
+      totalPullRequestReviewContributions
+      totalRepositoriesWithContributedCommits
+      totalRepositoriesWithContributedIssues
+      totalRepositoriesWithContributedPullRequests
+      totalRepositoriesWithContributedPullRequestReviews
+      totalRepositoryContributions
+      restrictedContributionsCount
+      startedAt
+      endedAt
+      contributionCalendar {
+        totalContributions
+        colors
+        weeks {
+          contributionDays {
+            date
+            contributionCount
+            color
+            contributionLevel
+          }
+        }
+      }
+    }
+  }
+}
+
