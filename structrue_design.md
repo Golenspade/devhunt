@@ -323,3 +323,90 @@ out/<login>/
 * **可降级**：静态分析“有就跑，无则跳过”，不足部分交给模型轻评。
 
 需要我把这棵结构直接在画布里生成一套**可跑的最小模板**（含空实现和命令脚手架）吗？
+
+
+
+---
+
+## 当前仓库实现与模块扩展约定
+
+> 这一节描述的是 **当前 devhunt 单仓实现** 下，`src/` 目录里扫描 / 分析 / 导出的分层方式，以及未来在“对拉下来的元数据做更多分析”时，应该如何增加和管理模块。它对应上文多包设计里的 `collector` + `analyzer`，但在一个包里压缩实现。
+
+### 1. 当前实际分层（src/*）
+
+- **类型层（数据契约）**：`src/types/*`
+  - `github.ts`：GitHub 相关原始记录类型（`RepoRecord` / `PRRecord` / `UserInfo` 等），对应采集阶段写进 `out/<login>/raw/*.jsonl` 的结构。
+  - `profile.ts`：画像输出与分析配置（`ProfileJSON` / `AnalyzeOptions` / `AnalysisResult` 等）。
+- **分析实现层**：`src/analysis/*`
+  - `metrics.ts`：基于 repo/pr 的数值指标与直方图（语言权重、topics、UOI、hours、top repos 等）。
+  - `nlp.ts`：基于 README 文本的风格识别与一致性分析（语言/Topics/自有仓提及等）。
+  - `index.ts`：`analyzeAll` orchestrator，组装上述指标，填充 `ProfileJSON` 和 `data_coverage`。
+- **门面层（对外 API）**：`src/analyze.ts`
+  - 只负责：
+    - `export type { ... }`：从 `src/types/*` re-export 类型。
+    - `export function xxx(...)`：把对外函数包装转发到 `src/analysis/*`。
+- **I/O 层（采集与导出）**：
+  - `src/scan.ts`：调用 `gh.ts` 拉取 GraphQL 数据，写入 `out/<login>/raw/*.jsonl` 与 `user_info.json`。
+  - `src/export.ts`：读取 raw JSON，构造 `AnalyzeOptions`，调用 `analyzeAll`，然后导出 `profile.json` / `top_repos.json` 与 SVG 图表。
+
+> 约束：**分析层不做任何 I/O，只吃纯数据类型；I/O 层不关心指标细节，只调用 `analyzeAll` 和少数公开的 helper。**
+
+### 2. 给“新元数据”加分析模块的标准流程
+
+以后如果在 scan 阶段新增了更多原始数据（commits、contributions、issues、reviews、外部文本源等），推荐按下面四步扩展：
+
+1. **先在 types 层定义干净的结构**
+   - 在 `src/types/github.ts` 或 `src/types/profile.ts` 里增加：
+     - 输入记录类型，如 `CommitRecord` / `ContributionsRecord` 等；
+     - 输出字段，扩展 `ProfileJSON` 的某个子块（例如 `behavior` 或新的 section）。
+   - 在 `AnalyzeOptions` 中加对应的输入字段，例如：
+     - `commits?: CommitRecord[];`
+     - `contributions?: ContributionsRecord;`
+
+2. **按“数据来源/领域”新增 analysis 模块文件**
+   - 不要按版本命名（避免 `metrics_v2.ts` 这类），而是按领域命名：
+     - `src/analysis/commits.ts`：只关心 commit 流水和时间分布；
+     - `src/analysis/contributions.ts`：只关心 `contributionsCollection`；
+     - 将来如需 AI/LLM，可以有 `src/analysis/ai.ts`。
+   - 模块内部只写 **纯函数**，典型签名形如：
+
+     ```ts
+     export function computeCommitStreaks(commits: CommitRecord[]): CommitStreaks { ... }
+     export function summarizeContributionCalendar(c: ContributionsRecord): ContributionSummary { ... }
+     ```
+
+3. **在 orchestrator (`src/analysis/index.ts`) 中“挂接”新模块**
+   - 在 `analyzeAll(options: AnalyzeOptions)` 里：
+     - 从 `options` 读取新输入（如 `options.commits`）；
+     - 调用新增的 `compute*` / `summarize*` 函数；
+     - 将结果挂到 `ProfileJSON` 的合适位置，并同步更新 `data_coverage`（如增加 commits/contributions 的计数和时间范围）。
+   - 所有版本语义（例如 `language_weights_version: "v2" | "v3"`）也集中在类型 + orchestrator，而不是分叉多个 pipeline 文件。
+
+4. **视需要在门面 `src/analyze.ts` 暴露独立 API，并补测试**
+   - 如果新指标会被 CLI 以外的调用方单独使用，可以在 `src/analyze.ts` 里增加一层转发：
+
+     ```ts
+     import { computeCommitStreaks as _computeCommitStreaks } from "./analysis/commits";
+
+     export function computeCommitStreaks(commits: CommitRecord[]): CommitStreaks {
+       return _computeCommitStreaks(commits);
+     }
+     ```
+
+   - 测试层面继续沿用现有策略：
+     - 在 `src/analyze.test.ts` 中，通过 `./analyze` 门面调用新函数；
+     - 为 `analyzeAll` 增加覆盖新字段的集成测试（有数据/无数据两种场景）。
+
+### 3. 模块膨胀后的管理原则（防止“长歪”）
+
+- **按“输入数据来源”划分模块，而不是按时间/版本划分**：
+  - ✅ `metrics.ts`（repos/prs）、`commits.ts`、`contributions.ts`、`nlp.ts`；
+  - ❌ `metrics_v2.ts`、`new_metrics.ts` 这类时间线命名。
+- **所有数据契约集中在 `src/types/*`**：
+  - 分析代码和 orchestrator 只引用这里的类型；
+  - 不在零散业务文件里再复制一份结构定义。
+- **测试只面向门面 API**：
+  - 大部分单元/集成测试通过 `./analyze` 导入，不直接绑定 `src/analysis/*` 内部文件结构；
+  - 这样内部重构（拆/并模块）时，只要门面保持兼容，测试可以大部分不动。
+
+通过以上约定，未来无论 raw 元数据再多一个维度（commits、contributions、issues……），都可以在 **types → analysis module → orchestrator → facade → tests** 这条固定路径上扩展，而不会把 `src/` 搞成“脚本堆”。

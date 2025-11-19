@@ -2,6 +2,31 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.0.11
+
+> 当前版本（pround=0, normal=0, shame=11）。
+
+### Changed
+- 将原有 `src/analyze.ts` 中的大部分实现拆分为模块化分析层：
+  - 新增 `src/analysis/metrics.ts`：集中所有数值/统计类指标（语言权重、UOI、活跃小时直方图、top repos 等）。
+  - 新增 `src/analysis/nlp.ts`：集中 Profile README 解析与一致性计算逻辑。
+  - 新增 `src/analysis/index.ts`：作为 `analyzeAll()` 的 orchestrator，串联上述指标并构造 `ProfileJSON`。
+- 将分析相关的 TypeScript 类型集中到 `src/types/*`：
+  - `RepoRecord` / `PRRecord` / `UserInfo` 等 GitHub 相关类型迁移到 `src/types/github.ts`。
+  - 画像输出和配置类型（`ProfileJSON` / `AnalyzeOptions` / `AnalysisResult` 等）迁移到 `src/types/profile.ts`。
+- `src/analyze.ts` 现在只作为对外门面：
+  - 从 `src/types/*` re-export 所有公共类型；
+  - 将导出的函数全部转发到 `src/analysis/*`，不再包含重复实现或未使用的 helper。
+
+### Technical Details
+- 所有公共 API 保持不变：
+  - `import { analyzeAll, computeLanguageWeights, ... } from "./analyze"` 仍然有效；
+  - `export.ts` / `cli.ts` / 测试用例无需修改即可兼容新结构。
+- 删除了 `src/analyze.ts` 中的冗余实现和未使用的辅助函数，避免相同逻辑在多个文件中重复存在。
+- 新增结构说明文档：
+  - 在 `structrue_design.md` 中补充「当前仓库实现与模块扩展约定」，明确 `src/types/*` / `src/analysis/*` / `src/analyze.ts` / `src/scan.ts` / `src/export.ts` 各自的职责和扩展方式。
+- 全量 `bun test` 通过（31/31），验证这次重构在行为上与 0.0.10 完全兼容。
+
 ## 0.0.10
 
 > 当前版本（pround=0, normal=0, shame=10）。
