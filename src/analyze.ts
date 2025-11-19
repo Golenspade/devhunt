@@ -179,18 +179,50 @@ export interface ProfileJSON {
   timezone: { auto: string | null; override: string | null; used: string | null };
   /** 技能画像（语言 + 权重） */
   skills: { lang: string; weight: number }[];
-  /** 核心活跃时段（Top 2 小时段） */
+  /**
+   * 核心活跃时段（Top 2 小时段）。
+   *
+   * 当没有 PR 数据时，为空数组（表示“未知”而不是“确实没有活跃时段”）。
+   */
   core_hours: { start: string; end: string }[];
-  /** 上游倾向指数（Upstream Orientation Index，0-1） */
-  uoi: number;
-  /** 外部 PR 合并率（0-1） */
-  external_pr_accept_rate: number;
+  /**
+   * 上游倾向指数（Upstream Orientation Index，0-1）。
+   *
+   * 当没有任何 PR 数据时为 null，表示“未知”。
+   */
+  uoi: number | null;
+  /** UOI 指标的样本量（参与计算的 PR 总数） */
+  uoi_sample_size: number;
+  /**
+   * 外部 PR 合并率（0-1）。
+   *
+   * 当没有外部 PR 时为 null，表示“未知”。
+   */
+  external_pr_accept_rate: number | null;
+  /** 外部 PR 合并率的样本量（外部 PR 总数） */
+  external_pr_sample_size: number;
   /** 证据样本（用于 AI 生成具体案例） */
   summary_evidence: { sample_prs: string[]; sample_repos: string[] };
   /** Profile README 分析 */
   readme: ProfileReadmeAnalysis;
   /** README 自述 vs 行为数据的一致性信号 */
   consistency: ConsistencySignals;
+  /**
+   * 数据覆盖范围元信息（v0.0.11）。
+   *
+   * 主要用于帮助下游消费者判断“样本有多大 / 时间跨度有多长”，
+   * 避免把本质上的 "no data" 误读成 0。
+   */
+  data_coverage: {
+    /** 仓库总数（参与分析的自有仓库数量） */
+    repos_total: number;
+    /** PR 总数（参与分析的 PR 数量） */
+    prs_total: number;
+    /** PR 时间范围：最早/最晚 createdAt，可能为 null（无 PR 时） */
+    prs_time_range: { first: string | null; last: string | null };
+    /** 仓库时间范围：最早创建和最近 push 时间，可能为 null（无仓库时） */
+    repos_time_range: { first_created_at: string | null; last_pushed_at: string | null };
+  };
 }
 
 /**
@@ -202,7 +234,7 @@ export interface AnalysisResult {
   /** 开发者画像（输出到 profile.json） */
   profile: ProfileJSON;
   /** 24 小时活跃直方图（用于生成 hours.svg） */
-  hoursHistogram: number[]; // length 24
+  hoursHistogram: (number | null)[]; // length 24
 }
 
 /**
@@ -290,6 +322,52 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const readme = analyzeProfileReadme(profileReadmeMarkdown ?? null);
   const consistency = computeReadmeConsistency(readme, langWeights, login, repos);
 
+  // 数据覆盖元信息与样本量（避免将 "no data" 误读为 0）
+  const reposTotal = repos.length;
+  const prsTotal = prs.length;
+
+  // PR 时间范围（按 createdAt）
+  let firstPr: string | null = null;
+  let lastPr: string | null = null;
+  if (prsTotal > 0) {
+    const first = prs[0]!;
+    let min = first.createdAt;
+    let max = first.createdAt;
+    for (const pr of prs) {
+      if (pr.createdAt < min) min = pr.createdAt;
+      if (pr.createdAt > max) max = pr.createdAt;
+    }
+    firstPr = min;
+    lastPr = max;
+  }
+
+  // 仓库时间范围（最早创建和最近 push）
+  let firstCreatedAt: string | null = null;
+  let lastPushedAt: string | null = null;
+  if (reposTotal > 0) {
+    const firstRepo = repos[0]!;
+    let minCreated = firstRepo.createdAt;
+    // pushedAt 允许为 null：如果整个用户从未 push 过（理论上很罕见），lastPushedAt 保持为 null
+    let maxPushed = firstRepo.pushedAt;
+    for (const repo of repos) {
+      if (repo.createdAt < minCreated) minCreated = repo.createdAt;
+      if (repo.pushedAt && (!maxPushed || repo.pushedAt > maxPushed)) {
+        maxPushed = repo.pushedAt;
+      }
+    }
+    firstCreatedAt = minCreated;
+    lastPushedAt = maxPushed ?? null;
+  }
+
+  // UOI / 外部 PR 合并率 的样本量
+  const uoiSampleSize = prsTotal;
+  let externalPrSampleSize = 0;
+  const lowerLogin = login.toLowerCase();
+  for (const pr of prs) {
+    const owner = pr.repository.owner.login.toLowerCase();
+    if (owner !== lowerLogin) externalPrSampleSize++;
+  }
+
   return {
     profile: {
       login,
@@ -307,10 +385,21 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       skills: langWeights,
       core_hours: coreHours,
       uoi,
+      uoi_sample_size: uoiSampleSize,
       external_pr_accept_rate: externalRate,
+      external_pr_sample_size: externalPrSampleSize,
       summary_evidence: summary,
       readme,
-      consistency
+      consistency,
+      data_coverage: {
+        repos_total: reposTotal,
+        prs_total: prsTotal,
+        prs_time_range: { first: firstPr, last: lastPr },
+        repos_time_range: {
+          first_created_at: firstCreatedAt,
+          last_pushed_at: lastPushedAt
+        }
+      }
     },
     hoursHistogram
   };
@@ -570,8 +659,9 @@ export function computeTopicWeights(
  * - 后续可改用 commit.authoredDate 获得更精确的时间分布
  * - 时区偏移量支持手动覆盖（--tz 参数）
  */
-export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number): number[] {
-  const buckets = Array.from({ length: 24 }, () => 0);
+export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number): (number | null)[] {
+  // 使用 (number | null) 保留“未观测到”的信息，调用方可以按需区分 0 和 null
+  const buckets: (number | null)[] = new Array(24).fill(null);
 
   for (const pr of prs) {
     const dt = new Date(pr.createdAt);
@@ -581,7 +671,9 @@ export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number):
     const utcHours = dt.getUTCHours();
     const localHours = (utcHours + tzOffsetMinutes / 60 + 24 * 3) % 24; // +24*3 防止负数
     const idx = Math.floor(localHours) % 24;
-    buckets[idx]++;
+    // 理论上 buckets 长度恒为 24，但为防御性编程与 TypeScript 提示，使用 ?? 兜底
+    const prev = buckets[idx] ?? 0;
+    buckets[idx] = prev + 1;
   }
 
   return buckets;
@@ -615,13 +707,23 @@ export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number):
  * - Top 2 时段可能不连续（如"下午 + 深夜"模式）
  * - 用于生成"当地时间 15:00-01:00 连续活跃"这样的描述（参考 pod.md）
  */
-export function computeCoreHours(hist: number[]): { start: string; end: string }[] {
+export function computeCoreHours(hist: (number | null)[]): { start: string; end: string }[] {
+  // 当没有任何 PR 事件时，直方图所有桶为 0，此时不应“硬凑”出 2 个时段，
+  // 而是返回空数组，表示“未知的活跃时段”。
+  let total = 0;
+  for (const v of hist) {
+    total += v ?? 0;
+  }
+  if (total === 0) return [];
+
   const pairs: { start: number; end: number; value: number }[] = [];
 
   // 计算每个 2 小时窗口的总和
   for (let h = 0; h < 24; h++) {
     const next = (h + 1) % 24;
-    const value = hist[h] + hist[next];
+    const a = hist[h] ?? 0;
+    const b = hist[next] ?? 0;
+    const value = a + b;
     pairs.push({ start: h, end: next, value });
   }
 
@@ -660,7 +762,7 @@ export function computeCoreHours(hist: number[]): { start: string; end: string }
  * - UOI 低（如 0.3-）：主要在自己的仓库工作，可能是独立开发者
  * - UOI 中等（0.4-0.6）：平衡型，既维护自己的项目也参与外部协作
  */
-export function computeUoi(prs: PRRecord[], login: string): number {
+export function computeUoi(prs: PRRecord[], login: string): number | null {
   let external = 0;
   let self = 0;
   const lower = login.toLowerCase();
@@ -673,7 +775,8 @@ export function computeUoi(prs: PRRecord[], login: string): number {
   }
 
   const denom = external + self;
-  return denom === 0 ? 0 : external / denom;
+  if (denom === 0) return null;
+  return external / denom;
 }
 
 /**
@@ -704,7 +807,7 @@ export function computeUoi(prs: PRRecord[], login: string): number {
  * - 低合并率（如 0.3-）：可能是探索性 PR，或与上游沟通不足
  * - 只统计外部 PR，自有仓库的 PR 不计入（因为自己可以随时合并）
  */
-export function computeExternalPrAcceptRate(prs: PRRecord[], login: string): number {
+export function computeExternalPrAcceptRate(prs: PRRecord[], login: string): number | null {
   const lower = login.toLowerCase();
   let externalTotal = 0;
   let merged = 0;
@@ -717,7 +820,7 @@ export function computeExternalPrAcceptRate(prs: PRRecord[], login: string): num
     if (pr.mergedAt) merged++;
   }
 
-  if (externalTotal === 0) return 0;
+  if (externalTotal === 0) return null;
   return merged / externalTotal;
 }
 

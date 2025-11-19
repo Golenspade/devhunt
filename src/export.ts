@@ -135,7 +135,7 @@ export async function reportUser(options: ReportOptions): Promise<void> {
       writeFile(join(baseOut, "profile.json"), JSON.stringify(analysis.profile, null, 2), "utf8"),
       writeFile(join(baseOut, "top_repos.json"), JSON.stringify(topRepos, null, 2), "utf8"),
       renderLanguagesChart(chartsDir, analysis.profile.skills),
-      renderHoursChart(chartsDir, analysis.hoursHistogram)
+      renderHoursChart(chartsDir, analysis.hoursHistogram.map((v) => v ?? 0))
     ]);
   } catch (err) {
     throw new AnalysisError(

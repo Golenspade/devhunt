@@ -59,8 +59,9 @@ describe("analyze core metrics", () => {
 
     const weights = computeLanguageWeights(repos);
     expect(weights.length).toBe(1);
-    expect(weights[0].lang).toBe("TypeScript");
-    expect(weights[0].weight).toBeCloseTo(1, 5);
+    const first = weights[0]!;
+    expect(first.lang).toBe("TypeScript");
+    expect(first.weight).toBeCloseTo(1, 5);
   });
 
   it("bins PRs into hours and derives core hours", () => {
@@ -90,10 +91,23 @@ describe("analyze core metrics", () => {
     ];
 
     const uoi = computeUoi(prs, login);
+    expect(uoi).not.toBeNull();
     expect(uoi).toBeCloseTo(2 / 3, 5);
 
     const rate = computeExternalPrAcceptRate(prs, login);
+    expect(rate).not.toBeNull();
     expect(rate).toBeCloseTo(1 / 2, 5);
+  });
+
+  it("returns null for UOI and external PR accept rate when there is no data", () => {
+    const login = "self";
+    const prs: PRRecord[] = [];
+
+    const uoi = computeUoi(prs, login);
+    expect(uoi).toBeNull();
+
+    const rate = computeExternalPrAcceptRate(prs, login);
+    expect(rate).toBeNull();
   });
 
   it("parses timezone offsets and builds timezone info", () => {
@@ -114,7 +128,8 @@ describe("analyze core metrics", () => {
     const prs: PRRecord[] = [makePr("2024-01-01T10:00:00Z", "other", true)];
 
     const top = computeTopRepos(repos, new Date("2024-02-01T00:00:00Z"));
-    expect(top[0].repo).toBe("self/a");
+    const firstTop = top[0]!;
+    expect(firstTop.repo).toBe("self/a");
 
     const summary = buildSummaryEvidence("self", repos, prs);
     expect(summary.sample_prs.length).toBe(1);
