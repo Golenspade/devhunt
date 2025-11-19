@@ -2,9 +2,62 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
-## 0.0.8
+## 0.0.9
 
-> 当前版本（pround=0, normal=0, shame=8）。
+> 当前版本（pround=0, normal=0, shame=9）。
+
+### Added
+- **仓库主题标签（Topics）拉取**：新增 `repositoryTopics` 字段，获取仓库的主题标签（如 "react", "typescript", "docker"）。
+- **完整语言统计拉取**：新增 `languages` 字段，获取仓库中所有语言的代码量统计（而不仅仅是 `primaryLanguage`）。
+- **仓库描述拉取**：新增 `description` 字段，获取仓库的描述文本。
+- **语言权重计算 V2**：新增 `computeLanguageWeightsV2()` 函数，基于完整的 `languages.edges` 数据计算语言权重。
+  - 考虑语言在仓库中的实际占比（字节数）
+  - 使用 `log(1+stars)` 作为仓库权重
+  - 提供 `total_bytes` 和 `weighted_bytes` 用于透明度
+- **Topics 权重计算**：新增 `computeTopicWeights()` 函数，基于 `repositoryTopics` 数据计算技术栈权重。
+  - 统计 topic 出现次数和加权次数
+  - 使用 `log(1+stars)` 作为仓库权重
+  - 提供 `count` 和 `weighted_count` 用于透明度
+- **README Topics 提取**：新增 `extractReadmeTopics()` 函数，从 Profile README 中提取常见技术栈关键词。
+  - 支持 70+ 常见技术栈关键词（前端框架、后端框架、数据库、云平台、容器/编排、CI/CD、测试、构建工具、机器学习等）
+  - 返回小写形式，便于与 `repositoryTopics` 进行比较
+- **一致性检查增强**：`ConsistencySignals` 接口新增 topics 相关字段：
+  - `readme_topics` - README 中提到的技术栈/主题
+  - `metric_topics` - 行为数据中的 topics
+  - `topic_overlap` - 同时出现在自述和行为中的 topics
+
+### Changed
+- **GraphQL 查询更新**：`src/queries/user_repos.graphql` 现在会拉取 `description`、`repositoryTopics` 和 `languages` 字段。
+- **RepoRecord 接口更新**：新增 `description`、`repositoryTopics` 和 `languages` 字段（可选）。
+- **README 一致性检查更新**：`computeReadmeConsistency()` 现在会比较 README 中提到的 topics 与行为数据中的 topics。
+
+### Technical Details
+- **语言权重算法**：
+  - 对每个仓库，计算仓库权重 `w_repo = log(1 + stars)`
+  - 对每种语言，计算其在仓库中的占比 `lang_ratio = lang_size / total_size`
+  - 累加每种语言的加权权重 `w_lang += w_repo * lang_size`
+  - 归一化为 0-1 之间的比例
+- **Topics 权重算法**：
+  - 对每个仓库，计算仓库权重 `w_repo = log(1 + stars)`
+  - 对每个 topic，累加权重 `w_topic += w_repo`
+  - 归一化为 0-1 之间的比例
+
+### Tests
+- 新增 3 个测试用例：
+  - `computeLanguageWeightsV2` 测试（验证基于完整语言数据的权重计算）
+  - `computeTopicWeights` 测试（验证 topics 权重计算）
+  - `extractReadmeTopics` 测试（验证 README topics 提取和一致性检查）
+- 所有 30 个测试通过
+
+### Verified With
+- **Golenspade**: 32 repositories, 23 pull requests, 98 commits
+- **pablo-abc**: 55 repositories, 50 pull requests, 0 commits
+  - 验证了 topics 数据拉取（如 "svelte", "forms", "typescript", "solidjs", "validation"）
+  - 验证了 languages 数据拉取（如 "TypeScript", "Astro", "JavaScript", "Svelte", "CSS"）
+
+---
+
+## 0.0.8
 
 ### Added
 - **贡献统计数据拉取**：新增 `contributionsCollection` 数据拉取功能，获取用户在最近一年内的完整贡献统计。

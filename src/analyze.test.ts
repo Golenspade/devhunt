@@ -2,6 +2,8 @@ import { describe, it, expect } from "bun:test";
 import {
   analyzeAll,
   computeLanguageWeights,
+  computeLanguageWeightsV2,
+  computeTopicWeights,
   computeHoursHistogram,
   computeCoreHours,
   computeUoi,
@@ -305,5 +307,123 @@ describe("computeReadmeConsistency", () => {
   });
 });
 
+describe("v0.0.9: computeLanguageWeightsV2 and computeTopicWeights", () => {
+  it("computes language weights based on full languages data", () => {
+    const repos: RepoRecord[] = [
+      {
+        ...makeRepo("self", "a", 100, "2024-01-02T00:00:00Z"),
+        languages: {
+          edges: [
+            { size: 8000, node: { name: "TypeScript" } },
+            { size: 2000, node: { name: "JavaScript" } }
+          ]
+        }
+      },
+      {
+        ...makeRepo("self", "b", 50, "2024-01-03T00:00:00Z"),
+        languages: {
+          edges: [
+            { size: 5000, node: { name: "Python" } }
+          ]
+        }
+      }
+    ];
 
+    const weights = computeLanguageWeightsV2(repos);
 
+    // 验证返回了所有语言
+    expect(weights.length).toBe(3);
+    expect(weights.map(w => w.lang)).toContain("TypeScript");
+    expect(weights.map(w => w.lang)).toContain("JavaScript");
+    expect(weights.map(w => w.lang)).toContain("Python");
+
+    // 验证权重总和为 1
+    const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+    expect(totalWeight).toBeCloseTo(1, 5);
+
+    // 验证 TypeScript 权重最高（因为 repo a 有 100 stars，且 TypeScript 占 80%）
+    const tsWeight = weights.find(w => w.lang === "TypeScript");
+    expect(tsWeight).toBeDefined();
+    expect(tsWeight!.weight).toBeGreaterThan(0.5);
+  });
+
+  it("computes topic weights based on repositoryTopics data", () => {
+    const repos: RepoRecord[] = [
+      {
+        ...makeRepo("self", "a", 100, "2024-01-02T00:00:00Z"),
+        repositoryTopics: {
+          nodes: [
+            { topic: { name: "react" } },
+            { topic: { name: "typescript" } }
+          ]
+        }
+      },
+      {
+        ...makeRepo("self", "b", 50, "2024-01-03T00:00:00Z"),
+        repositoryTopics: {
+          nodes: [
+            { topic: { name: "react" } },
+            { topic: { name: "nextjs" } }
+          ]
+        }
+      }
+    ];
+
+    const weights = computeTopicWeights(repos);
+
+    // 验证返回了所有 topics
+    expect(weights.length).toBe(3);
+    expect(weights.map(w => w.topic)).toContain("react");
+    expect(weights.map(w => w.topic)).toContain("typescript");
+    expect(weights.map(w => w.topic)).toContain("nextjs");
+
+    // 验证权重总和为 1
+    const totalWeight = weights.reduce((sum, w) => sum + w.weight, 0);
+    expect(totalWeight).toBeCloseTo(1, 5);
+
+    // 验证 react 权重最高（因为出现在两个仓库中）
+    const reactWeight = weights.find(w => w.topic === "react");
+    expect(reactWeight).toBeDefined();
+    expect(reactWeight!.count).toBe(2);
+    expect(reactWeight!.weight).toBeGreaterThan(0.4);
+  });
+
+  it("extracts topics from README and compares with metric topics", () => {
+    const md = [
+      "# Hi",
+      "",
+      "I work with React, Docker, and Kubernetes.",
+      ""
+    ].join("\n");
+
+    const readme = analyzeProfileReadme(md);
+    const skills = [{ lang: "JavaScript", weight: 1 }];
+    const repos: RepoRecord[] = [
+      {
+        ...makeRepo("self", "a", 10, "2024-01-02T00:00:00Z"),
+        repositoryTopics: {
+          nodes: [
+            { topic: { name: "react" } },
+            { topic: { name: "docker" } }
+          ]
+        }
+      }
+    ];
+
+    const c = computeReadmeConsistency(readme, skills, "self", repos);
+
+    // 验证 README topics 提取
+    expect(c.readme_topics).toContain("react");
+    expect(c.readme_topics).toContain("docker");
+    expect(c.readme_topics).toContain("kubernetes");
+
+    // 验证 metric topics 提取
+    expect(c.metric_topics).toContain("react");
+    expect(c.metric_topics).toContain("docker");
+
+    // 验证 topic overlap
+    expect(c.topic_overlap).toContain("react");
+    expect(c.topic_overlap).toContain("docker");
+    expect(c.topic_overlap).not.toContain("kubernetes"); // kubernetes 不在 metric_topics 中
+  });
+});

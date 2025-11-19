@@ -17,6 +17,11 @@
  * 仓库记录接口
  *
  * 对应 scan 阶段从 GitHub GraphQL API 拉取的仓库数据。
+ *
+ * v0.0.9 新增字段：
+ * - description: 仓库描述
+ * - repositoryTopics: 仓库主题标签（用于技术栈识别）
+ * - languages: 所有语言统计（而不仅仅是 primaryLanguage）
  */
 export interface RepoRecord {
   name: string;
@@ -30,6 +35,13 @@ export interface RepoRecord {
   createdAt: string;
   pushedAt: string | null;
   owner: { login: string };
+  description?: string | null;
+  repositoryTopics?: {
+    nodes: { topic: { name: string } }[];
+  };
+  languages?: {
+    edges: { size: number; node: { name: string } }[];
+  } | null;
 }
 
 /**
@@ -93,6 +105,11 @@ export interface ProfileReadmeAnalysis {
  * 对齐 pod.md 中的“第 3 层：一致性/真实性信号（consistency）”：
  * - 比较 README 自述的语言/仓库 和 repos/skills 等行为数据
  * - 不直接给“真/假”结论，只给“佐证强弱”和可回溯的证据字段
+ *
+ * v0.0.9 新增：
+ * - readme_topics: README 中提到的技术栈/主题（从 topics 数据中提取）
+ * - metric_topics: 行为数据中的 topics（从 repositoryTopics 中提取）
+ * - topic_overlap: 同时出现在自述和行为中的 topics
  */
 export interface ConsistencySignals {
   /** README 中自述的语言列表（从文本和图片 alt 文本中提取） */
@@ -111,6 +128,12 @@ export interface ConsistencySignals {
   owned_repos_found_in_data: string[];
   /** README 提到但在仓库列表中未找到的自有仓库（可能是私有仓库或访问受限） */
   owned_repos_missing_in_data: string[];
+  /** v0.0.9: README 中提到的技术栈/主题（从文本中提取，小写） */
+  readme_topics: string[];
+  /** v0.0.9: 行为数据中的 topics（从 repositoryTopics 中提取，小写） */
+  metric_topics: string[];
+  /** v0.0.9: 同时出现在自述和行为中的 topics */
+  topic_overlap: string[];
 }
 
 /**
@@ -282,6 +305,172 @@ export function computeLanguageWeights(repos: RepoRecord[]): { lang: string; wei
 
   return entries
     .map(([lang, w]) => ({ lang, weight: w / total }))
+    .sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * 计算语言权重（基于完整语言数据）
+ *
+ * v0.0.9 新增：使用 languages.edges 的完整数据，而不仅仅是 primaryLanguage。
+ *
+ * 算法：
+ * 1. 对每个仓库，提取 languages.edges 数据
+ * 2. 计算仓库权重：w_repo = log(1 + stars)
+ * 3. 对每种语言，计算其在仓库中的占比：lang_ratio = lang_size / total_size
+ * 4. 累加每种语言的加权权重：w_lang += w_repo * lang_ratio
+ * 5. 归一化为 0-1 之间的比例
+ * 6. 按权重降序排列
+ *
+ * @param repos - 仓库列表
+ * @returns 语言权重数组（按权重降序）
+ *
+ * @example
+ * ```typescript
+ * const repos = [
+ *   {
+ *     stargazerCount: 100,
+ *     languages: {
+ *       edges: [
+ *         { size: 8000, node: { name: "TypeScript" } },
+ *         { size: 2000, node: { name: "JavaScript" } }
+ *       ]
+ *     }
+ *   }
+ * ];
+ * computeLanguageWeightsV2(repos);
+ * // => [
+ * //   { lang: "TypeScript", weight: 0.8, total_bytes: 8000, weighted_bytes: 3686.4 },
+ * //   { lang: "JavaScript", weight: 0.2, total_bytes: 2000, weighted_bytes: 921.6 }
+ * // ]
+ * ```
+ *
+ * 设计理念：
+ * - 使用 log(1+stars) 作为仓库权重，避免单个高 star 仓库主导结果
+ * - 考虑语言在仓库中的实际占比（而不是简单的 0/1）
+ * - 提供 total_bytes 和 weighted_bytes 用于透明度和调试
+ * - 归一化为比例，便于跨用户比较
+ */
+export function computeLanguageWeightsV2(
+  repos: RepoRecord[]
+): { lang: string; weight: number; total_bytes: number; weighted_bytes: number }[] {
+  const langStats = new Map<string, { total_bytes: number; weighted_bytes: number }>();
+
+  // 累加每种语言的权重
+  for (const repo of repos) {
+    const languages = repo.languages?.edges;
+    if (!languages || languages.length === 0) continue;
+
+    const stars = repo.stargazerCount ?? 0;
+    const repoWeight = Math.log1p(stars); // log(1 + stars)
+    if (repoWeight <= 0) continue;
+
+    // 计算仓库中所有语言的总字节数
+    const totalSize = languages.reduce((sum, edge) => sum + edge.size, 0);
+    if (totalSize === 0) continue;
+
+    // 对每种语言，累加加权字节数
+    for (const edge of languages) {
+      const lang = edge.node.name;
+      const weightedBytes = repoWeight * edge.size;
+
+      const current = langStats.get(lang) ?? { total_bytes: 0, weighted_bytes: 0 };
+      langStats.set(lang, {
+        total_bytes: current.total_bytes + edge.size,
+        weighted_bytes: current.weighted_bytes + weightedBytes
+      });
+    }
+  }
+
+  // 归一化为比例
+  const entries = Array.from(langStats.entries());
+  const totalWeightedBytes = entries.reduce((sum, [, stats]) => sum + stats.weighted_bytes, 0) || 1;
+
+  return entries
+    .map(([lang, stats]) => ({
+      lang,
+      weight: stats.weighted_bytes / totalWeightedBytes,
+      total_bytes: stats.total_bytes,
+      weighted_bytes: stats.weighted_bytes
+    }))
+    .sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * 计算 Topics 权重
+ *
+ * v0.0.9 新增：基于 repositoryTopics 数据计算技术栈权重。
+ *
+ * 算法：
+ * 1. 对每个仓库，提取 repositoryTopics.nodes 数据
+ * 2. 计算仓库权重：w_repo = log(1 + stars)
+ * 3. 对每个 topic，累加权重：w_topic += w_repo
+ * 4. 归一化为 0-1 之间的比例
+ * 5. 按权重降序排列
+ *
+ * @param repos - 仓库列表
+ * @returns Topics 权重数组（按权重降序）
+ *
+ * @example
+ * ```typescript
+ * const repos = [
+ *   {
+ *     stargazerCount: 100,
+ *     repositoryTopics: {
+ *       nodes: [
+ *         { topic: { name: "react" } },
+ *         { topic: { name: "typescript" } }
+ *       ]
+ *     }
+ *   }
+ * ];
+ * computeTopicWeights(repos);
+ * // => [
+ * //   { topic: "react", weight: 0.5, count: 1, weighted_count: 4.615 },
+ * //   { topic: "typescript", weight: 0.5, count: 1, weighted_count: 4.615 }
+ * // ]
+ * ```
+ *
+ * 设计理念：
+ * - 使用 log(1+stars) 作为仓库权重，避免单个高 star 仓库主导结果
+ * - 提供 count（原始出现次数）和 weighted_count（加权次数）用于透明度
+ * - 归一化为比例，便于跨用户比较
+ * - Topics 可以补充语言分析（如 "react" 比 "JavaScript" 更具体）
+ */
+export function computeTopicWeights(
+  repos: RepoRecord[]
+): { topic: string; weight: number; count: number; weighted_count: number }[] {
+  const topicStats = new Map<string, { count: number; weighted_count: number }>();
+
+  // 累加每个 topic 的权重
+  for (const repo of repos) {
+    const topics = repo.repositoryTopics?.nodes;
+    if (!topics || topics.length === 0) continue;
+
+    const stars = repo.stargazerCount ?? 0;
+    const repoWeight = Math.log1p(stars); // log(1 + stars)
+    if (repoWeight <= 0) continue;
+
+    for (const topicNode of topics) {
+      const topic = topicNode.topic.name;
+      const current = topicStats.get(topic) ?? { count: 0, weighted_count: 0 };
+      topicStats.set(topic, {
+        count: current.count + 1,
+        weighted_count: current.weighted_count + repoWeight
+      });
+    }
+  }
+
+  // 归一化为比例
+  const entries = Array.from(topicStats.entries());
+  const totalWeightedCount = entries.reduce((sum, [, stats]) => sum + stats.weighted_count, 0) || 1;
+
+  return entries
+    .map(([topic, stats]) => ({
+      topic,
+      weight: stats.weighted_count / totalWeightedCount,
+      count: stats.count,
+      weighted_count: stats.weighted_count
+    }))
     .sort((a, b) => b.weight - a.weight);
 }
 
@@ -915,6 +1104,91 @@ function extractReadmeLanguages(readme: ProfileReadmeAnalysis): string[] {
 }
 
 /**
+ * 从 Profile README 中提取技术栈/主题关键词
+ *
+ * v0.0.9 新增：提取 README 中提到的常见技术栈关键词（如 "react", "docker", "kubernetes"）。
+ *
+ * 算法：
+ * 1. 从 README 的纯文本和图片 alt 文本中提取文本
+ * 2. 使用常见技术栈关键词列表进行匹配
+ * 3. 返回匹配到的关键词（小写）
+ *
+ * @param readme - Profile README 分析结果
+ * @returns 提取到的 topics 列表（小写）
+ *
+ * 设计理念：
+ * - 使用简单的基于关键字的启发式规则，保证可解释和可复现
+ * - 关键词列表覆盖常见的框架、工具、平台、技术栈
+ * - 返回小写形式，便于与 repositoryTopics 进行比较
+ */
+function extractReadmeTopics(readme: ProfileReadmeAnalysis): string[] {
+  const texts: string[] = [];
+
+  if (readme.plain_text) {
+    texts.push(readme.plain_text);
+  }
+
+  if (readme.image_alt_texts && readme.image_alt_texts.length > 0) {
+    texts.push(readme.image_alt_texts.join(" "));
+  }
+
+  if (texts.length === 0 && readme.markdown) {
+    texts.push(readme.markdown);
+  }
+
+  if (texts.length === 0) {
+    return [];
+  }
+
+  const haystack = texts.join("\n").toLowerCase();
+  const found = new Set<string>();
+
+  // 常见技术栈关键词列表（小写）
+  const KNOWN_TOPICS = [
+    // 前端框架
+    "react", "vue", "angular", "svelte", "next.js", "nuxt", "gatsby",
+    // 后端框架
+    "express", "fastify", "koa", "nest", "django", "flask", "fastapi", "rails", "spring", "laravel",
+    // 移动开发
+    "react-native", "flutter", "ionic", "xamarin",
+    // 数据库
+    "postgresql", "mysql", "mongodb", "redis", "elasticsearch", "sqlite", "cassandra",
+    // 云平台
+    "aws", "azure", "gcp", "vercel", "netlify", "heroku", "digitalocean",
+    // 容器/编排
+    "docker", "kubernetes", "k8s", "helm", "terraform",
+    // CI/CD
+    "github-actions", "gitlab-ci", "jenkins", "circleci", "travis-ci",
+    // 测试
+    "jest", "mocha", "pytest", "junit", "cypress", "selenium",
+    // 构建工具
+    "webpack", "vite", "rollup", "esbuild", "parcel", "babel",
+    // 包管理
+    "npm", "yarn", "pnpm", "pip", "cargo", "maven", "gradle",
+    // 其他工具
+    "graphql", "rest", "grpc", "websocket", "oauth", "jwt",
+    // 机器学习
+    "tensorflow", "pytorch", "scikit-learn", "keras", "pandas", "numpy",
+    // 区块链
+    "ethereum", "solidity", "web3", "blockchain",
+    // 游戏开发
+    "unity", "unreal", "godot"
+  ];
+
+  for (const topic of KNOWN_TOPICS) {
+    // 转义特殊字符（如 . 在正则中需要转义）
+    const escaped = topic.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\b${escaped}\\b`, "i");
+
+    if (pattern.test(haystack)) {
+      found.add(topic);
+    }
+  }
+
+  return Array.from(found).sort();
+}
+
+/**
  * 从 Profile README 中提取指向自有仓库的 GitHub 链接
  *
  * 仅识别形如 https://github.com/<login>/<repo> 的链接，并归一化为小写 owner/repo。
@@ -999,6 +1273,29 @@ export function computeReadmeConsistency(
     }
   }
 
+  // v0.0.9: 提取 README 中提到的 topics（从文本中提取常见技术栈关键词）
+  const readmeTopics = extractReadmeTopics(readme);
+
+  // v0.0.9: 提取行为数据中的 topics（从 repositoryTopics 中提取）
+  const metricTopicsSet = new Set<string>();
+  for (const repo of repos) {
+    const topics = repo.repositoryTopics?.nodes;
+    if (topics) {
+      for (const topicNode of topics) {
+        metricTopicsSet.add(topicNode.topic.name.toLowerCase());
+      }
+    }
+  }
+  const metricTopics = Array.from(metricTopicsSet).sort();
+
+  // v0.0.9: 计算 topic 重叠
+  const topicOverlap: string[] = [];
+  for (const topic of readmeTopics) {
+    if (metricTopicsSet.has(topic.toLowerCase())) {
+      topicOverlap.push(topic);
+    }
+  }
+
   return {
     readme_languages: readmeLanguages,
     metric_languages: metricLanguages,
@@ -1007,7 +1304,10 @@ export function computeReadmeConsistency(
     readme_vs_skills_consistency: consistencyLevel,
     owned_repos_mentioned: ownedReposMentioned,
     owned_repos_found_in_data: ownedReposFoundInData,
-    owned_repos_missing_in_data: ownedReposMissingInData
+    owned_repos_missing_in_data: ownedReposMissingInData,
+    readme_topics: readmeTopics,
+    metric_topics: metricTopics,
+    topic_overlap: topicOverlap
   };
 }
 

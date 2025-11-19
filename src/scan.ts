@@ -41,9 +41,45 @@ interface ReposConnection {
 }
 
 /**
+ * 仓库主题（Topic）节点数据
+ *
+ * 包含仓库的主题标签信息。
+ *
+ * 字段说明：
+ * - topic.name: 主题名称（如 "react", "typescript", "machine-learning"）
+ */
+interface RepositoryTopicNode {
+  topic: {
+    name: string;
+  };
+}
+
+/**
+ * 语言节点数据
+ *
+ * 包含仓库中使用的编程语言及其代码量统计。
+ *
+ * 字段说明：
+ * - name: 语言名称（如 "TypeScript", "Python"）
+ * - size: 该语言的代码字节数
+ */
+interface LanguageEdge {
+  size: number;
+  node: {
+    name: string;
+  };
+}
+
+/**
  * 仓库节点数据
  *
  * 包含仓库的基本信息和统计数据。
+ *
+ * 设计理念：
+ * - v0.0.9 新增 description、repositoryTopics、languages 字段
+ * - repositoryTopics 用于识别技术栈（比 primaryLanguage 更丰富）
+ * - languages 提供完整的语言分布（而不仅仅是主语言）
+ * - description 用于提取项目关键词和类型
  */
 interface RepoNode {
   name: string;
@@ -57,6 +93,13 @@ interface RepoNode {
   createdAt: string;
   pushedAt: string | null;
   owner: { login: string };
+  description: string | null;
+  repositoryTopics: {
+    nodes: RepositoryTopicNode[];
+  };
+  languages: {
+    edges: LanguageEdge[];
+  } | null;
 }
 
 /**
