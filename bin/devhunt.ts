@@ -7,8 +7,11 @@ import { resolveSince } from "../src/timeWindow";
 
 function printUsage() {
   console.log(`Usage:
-  bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all]
+  bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all] [--yes|-y]
   bun devhunt report <login> [--tz Asia/Shanghai]
+
+Options:
+  --yes, -y    跳过用户确认，直接开始扫描（适用于批量扫描或 CI 环境）
 `);
 }
 
@@ -27,6 +30,7 @@ async function main() {
         login,
         token: options.token ?? process.env.GITHUB_TOKEN ?? undefined,
         since,
+        skipConfirmation: options.yes ?? false,
       });
       break;
     }

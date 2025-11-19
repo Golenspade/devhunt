@@ -42,6 +42,16 @@ export interface CLIOptions {
    * 参考：mvp.md 中的"以人为本 & 全史视角"设计理念
    */
   window?: string;
+
+  /**
+   * 跳过用户确认
+   *
+   * 在扫描前跳过用户信息预览和确认步骤。
+   * 适用于批量扫描或 CI 环境。
+   *
+   * 命令行参数：--yes 或 -y
+   */
+  yes?: boolean;
 }
 
 /**
@@ -77,6 +87,8 @@ export function parseArgs(
       options.tz = rest[++i];
     } else if (arg === "--window") {
       options.window = rest[++i];
+    } else if (arg === "--yes" || arg === "-y") {
+      options.yes = true;
     }
   }
 

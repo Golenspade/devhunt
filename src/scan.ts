@@ -48,6 +48,7 @@ interface ReposConnection {
     };
 
     repositories: {
+      totalCount: number;
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
       nodes: RepoNode[];
     };
@@ -507,6 +508,8 @@ export interface ScanOptions extends GitHubClientOptions {
   outDir?: string;
   /** Commit 拉取的起始时间（ISO 8601 格式，null 表示不限制） */
   since?: string | null;
+  /** 跳过用户确认（用于批量扫描或 CI 环境） */
+  skipConfirmation?: boolean;
 }
 
 // GraphQL 查询文件路径
@@ -516,6 +519,58 @@ const userIdQueryPath = new URL("./queries/user_id.graphql", import.meta.url).pa
 const repoCommitsQueryPath = new URL("./queries/repo_commits.graphql", import.meta.url).pathname;
 const profileReadmeQueryPath = new URL("./queries/profile_readme.graphql", import.meta.url).pathname;
 const contributionsQueryPath = new URL("./queries/user_contributions.graphql", import.meta.url).pathname;
+
+/**
+ * 显示用户信息预览并询问是否继续扫描
+ *
+ * 在开始扫描前，显示用户的基本信息（login, bio, followers, repos 等），
+ * 让用户确认是否是正确的用户。这可以避免因用户名输入错误而浪费扫描时间。
+ *
+ * @param userInfo - 用户基本信息
+ * @param repoCount - 仓库总数
+ * @throws {Error} 如果用户取消扫描
+ *
+ * 设计理念：
+ * - 只在交互式终端中询问（通过检测 stdin.isTTY）
+ * - 可以通过 skipConfirmation 参数跳过（用于批量扫描或 CI 环境）
+ * - 显示关键信息帮助用户判断是否是正确的用户
+ */
+async function confirmUserScan(userInfo: UserInfo, repoCount: number): Promise<void> {
+  // 如果不是交互式终端（如 CI 环境），自动继续
+  if (!process.stdin.isTTY) {
+    return;
+  }
+
+  // 显示用户信息预览
+  console.log("\n[devhunt] 用户信息预览:");
+  console.log(`  用户名: ${userInfo.login}`);
+  console.log(`  简介: ${userInfo.bio || "(无)"}`);
+  console.log(`  公司: ${userInfo.company || "(无)"}`);
+  console.log(`  位置: ${userInfo.location || "(无)"}`);
+  console.log(`  Followers: ${userInfo.followers}`);
+  console.log(`  Following: ${userInfo.following}`);
+  console.log(`  公开仓库: ${repoCount}`);
+
+  if (userInfo.organizations.length > 0) {
+    console.log(`  组织: ${userInfo.organizations.map((org) => org.login).join(", ")}`);
+  }
+
+  // 询问是否继续
+  console.log("\n是否继续扫描此用户？(y/n) ");
+
+  // 读取用户输入
+  const answer = await new Promise<string>((resolve) => {
+    process.stdin.once("data", (data) => {
+      resolve(data.toString().trim().toLowerCase());
+    });
+  });
+
+  if (answer !== "y" && answer !== "yes") {
+    throw new Error("用户取消扫描");
+  }
+
+  console.log(); // 空行，让输出更清晰
+}
 
 /**
  * 扫描 GitHub 用户的所有公开数据
@@ -571,7 +626,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   // 第一阶段：并行拉取独立数据源
   const [authorId, reposResult, prs, profileReadme, contributions] = await Promise.all([
     fetchUserId(login, options),
-    fetchAllRepos(login, reposQueryPath, options),
+    fetchAllRepos(login, reposQueryPath, options, options.skipConfirmation ?? false),
     fetchAllPRs(login, prsQueryPath, options),
     fetchProfileReadme(login, options),
     fetchContributionsCollection(login, contributionsFrom, contributionsTo, options),
@@ -650,6 +705,7 @@ async function fetchAllRepos(
   login: string,
   queryPath: string,
   options: GitHubClientOptions,
+  skipConfirmation: boolean = false,
 ): Promise<{ repos: RepoNode[]; userInfo: UserInfo }> {
   const all: RepoNode[] = [];
   let after: string | null = null;
@@ -686,6 +742,11 @@ async function fetchAllRepos(
           websiteUrl: org.websiteUrl,
         })),
       };
+
+      // 在第一次获取用户信息后，显示预览并询问是否继续
+      if (!skipConfirmation) {
+        await confirmUserScan(userInfo, data.user.repositories.totalCount);
+      }
     }
 
     const conn = data.user.repositories;
