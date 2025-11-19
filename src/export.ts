@@ -18,7 +18,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeAll, computeTopRepos } from "./analyze";
-import type { RepoRecord, PRRecord } from "./analyze";
+import type { RepoRecord, PRRecord, UserInfo } from "./analyze";
 import { renderLanguagesChart, renderHoursChart } from "./charts";
 import { AnalysisError } from "./errors";
 
@@ -78,10 +78,11 @@ export async function reportUser(options: ReportOptions): Promise<void> {
   console.log(`[devhunt] Reading raw data from ${rawDir}`);
 
   // 并行读取所有原始数据文件
-  const [repos, prs, profileReadmeMarkdown] = await Promise.all([
+  const [repos, prs, profileReadmeMarkdown, userInfo] = await Promise.all([
     readJsonl<RepoRecord>(join(rawDir, "repos.jsonl")),
     readJsonl<PRRecord>(join(rawDir, "prs.jsonl")),
-    readOptionalText(join(rawDir, "profile_readme.md"))
+    readOptionalText(join(rawDir, "profile_readme.md")),
+    readOptionalJson<UserInfo>(join(rawDir, "user_info.json")) // v0.0.10: 读取用户信息
   ]);
 
   // 打印数据加载情况
@@ -92,6 +93,12 @@ export async function reportUser(options: ReportOptions): Promise<void> {
     console.log("[devhunt] Profile README: file exists but is empty");
   } else {
     console.log("[devhunt] Profile README: not found");
+  }
+  // v0.0.10: 打印用户信息加载情况
+  if (userInfo) {
+    console.log("[devhunt] User info: found and loaded");
+  } else {
+    console.log("[devhunt] User info: not found (may be from older scan)");
   }
 
   // 检查是否有数据（如果没有，可能是用户忘记先运行 scan）
@@ -108,7 +115,8 @@ export async function reportUser(options: ReportOptions): Promise<void> {
       repos,
       prs,
       tzOverride: options.tzOverride,
-      profileReadmeMarkdown
+      profileReadmeMarkdown,
+      userInfo // v0.0.10: 传递用户信息
     });
     topRepos = computeTopRepos(repos);
   } catch (err) {
@@ -165,6 +173,31 @@ async function readOptionalText(path: string): Promise<string | null> {
       return null;
     }
     // 其他错误（如权限问题）继续抛出
+    throw err;
+  }
+}
+
+/**
+ * 读取可选的 JSON 文件
+ *
+ * 如果文件不存在，返回 null 而不抛出错误。
+ * 用于读取可能不存在的用户信息文件（v0.0.10 新增）。
+ *
+ * @template T - JSON 对象的类型
+ * @param path - JSON 文件路径
+ * @returns 解析后的对象，或 null（文件不存在时）
+ * @throws 当文件存在但解析失败时（如 JSON 格式错误）
+ */
+async function readOptionalJson<T>(path: string): Promise<T | null> {
+  try {
+    const text = await readFile(path, "utf8");
+    return JSON.parse(text) as T;
+  } catch (err: any) {
+    if (err && err.code === "ENOENT") {
+      // 文件不存在，返回 null
+      return null;
+    }
+    // 其他错误（如 JSON 解析错误）继续抛出
     throw err;
   }
 }

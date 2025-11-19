@@ -1,5 +1,22 @@
 query Repos($login:String!, $after:String) {
   user(login:$login) {
+    # v0.0.10: 用户基本信息（高可信度字段）
+    bio
+    company
+    location
+    websiteUrl
+    twitterUsername
+    followers { totalCount }
+    following { totalCount }
+    organizations(first: 10) {
+      nodes {
+        login
+        name
+        description
+        websiteUrl
+      }
+    }
+
     repositories(first:50, after:$after, ownerAffiliations:OWNER, orderBy:{field:PUSHED_AT, direction:DESC}) {
       pageInfo { hasNextPage endCursor }
       nodes {

@@ -145,10 +145,36 @@ export interface ConsistencySignals {
  * - 只给事实和证据，不做价值判断
  * - 所有结论都可回溯到原始数据（repos/PRs）
  * - 结构化数据便于 AI 生成"结论/分析/亮点/总评"
+ *
+ * v0.0.10: 新增用户基本信息字段（bio/company/location/websiteUrl/twitterUsername/followers/following/organizations）
  */
 export interface ProfileJSON {
   /** GitHub 用户名 */
   login: string;
+
+  // v0.0.10: 用户基本信息（高可信度字段）
+  /** 用户简介 */
+  bio: string | null;
+  /** 公司/组织 */
+  company: string | null;
+  /** 地理位置 */
+  location: string | null;
+  /** 个人网站 URL */
+  websiteUrl: string | null;
+  /** Twitter 用户名 */
+  twitterUsername: string | null;
+  /** 关注者数量（拉取但不计入权重） */
+  followers: number;
+  /** 关注数量（拉取但不计入权重） */
+  following: number;
+  /** 所属组织列表（最多 10 个） */
+  organizations: {
+    login: string;
+    name: string | null;
+    description: string | null;
+    websiteUrl: string | null;
+  }[];
+
   /** 时区信息（自动推断 / 用户覆盖 / 实际使用） */
   timezone: { auto: string | null; override: string | null; used: string | null };
   /** 技能画像（语言 + 权重） */
@@ -183,6 +209,8 @@ export interface AnalysisResult {
  * 分析选项
  *
  * 传递给 analyzeAll 函数的参数。
+ *
+ * v0.0.10: 新增 userInfo 参数
  */
 export interface AnalyzeOptions {
   /** GitHub 用户名 */
@@ -195,6 +223,32 @@ export interface AnalyzeOptions {
   tzOverride?: string | null;
   /** Profile README 的 Markdown 内容 */
   profileReadmeMarkdown?: string | null;
+  /** 用户基本信息（v0.0.10 新增） */
+  userInfo?: UserInfo | null;
+}
+
+/**
+ * 用户基本信息
+ *
+ * v0.0.10: 从 scan.ts 导入的用户信息类型
+ *
+ * 这些字段具有高可信度（直接来自 GitHub 用户设置）。
+ */
+export interface UserInfo {
+  login: string;
+  bio: string | null;
+  company: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  twitterUsername: string | null;
+  followers: number;
+  following: number;
+  organizations: {
+    login: string;
+    name: string | null;
+    description: string | null;
+    websiteUrl: string | null;
+  }[];
 }
 
 /**
@@ -222,7 +276,7 @@ export interface AnalyzeOptions {
  * - 不做副作用（如文件 I/O），只做数据转换
  */
 export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
-  const { login, repos, prs, tzOverride, profileReadmeMarkdown } = options;
+  const { login, repos, prs, tzOverride, profileReadmeMarkdown, userInfo } = options;
 
   // 计算各项指标
   const langWeights = computeLanguageWeights(repos);
@@ -239,6 +293,16 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   return {
     profile: {
       login,
+      // v0.0.10: 用户基本信息（如果提供）
+      bio: userInfo?.bio ?? null,
+      company: userInfo?.company ?? null,
+      location: userInfo?.location ?? null,
+      websiteUrl: userInfo?.websiteUrl ?? null,
+      twitterUsername: userInfo?.twitterUsername ?? null,
+      followers: userInfo?.followers ?? 0,
+      following: userInfo?.following ?? 0,
+      organizations: userInfo?.organizations ?? [],
+
       timezone,
       skills: langWeights,
       core_hours: coreHours,

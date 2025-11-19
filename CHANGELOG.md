@@ -2,9 +2,40 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
-## 0.0.9
+## 0.0.10
 
-> 当前版本（pround=0, normal=0, shame=9）。
+> 当前版本（pround=0, normal=0, shame=10）。
+
+### Added
+- **用户基本信息拉取**：新增 `bio`、`company`、`location`、`websiteUrl`、`twitterUsername`、`followers`、`following`、`organizations` 字段到 `profile.json`。
+  - **数据来源**：GitHub GraphQL API User 对象（高可信度字段）
+  - **存储位置**：`out/<login>/raw/user_info.json`（单个 JSON 对象）
+  - **用途**：
+    - 补充 README 一致性检查（如 company 字段 vs README 中提到的公司）
+    - 识别用户的专业背景和影响力（organizations 字段）
+    - 提供地理位置和社交媒体信息
+  - **注意**：`followers` 和 `following` 字段拉取但不计入权重（可能存在刷粉行为）
+- **新增 GraphQL 字段**：在 `user_repos.graphql` 中添加用户基本信息字段（bio/company/location/websiteUrl/twitterUsername/followers/following/organizations）。
+- **新增 TypeScript 接口**：
+  - `UserInfo`（在 `src/scan.ts` 和 `src/analyze.ts` 中）：用户基本信息数据结构
+  - `OrganizationNode`（在 `src/scan.ts` 中）：组织节点数据
+- **新增辅助函数**：`readOptionalJson<T>()`（在 `src/export.ts` 中）：读取可选的 JSON 文件。
+
+### Changed
+- `ProfileJSON` 接口现在包含用户基本信息字段（bio/company/location/websiteUrl/twitterUsername/followers/following/organizations）。
+- `fetchAllRepos()` 函数现在返回 `{ repos: RepoNode[]; userInfo: UserInfo }` 对象（而不仅仅是 `RepoNode[]`）。
+- `scanUser()` 函数现在会提取用户信息并写入 `out/<login>/raw/user_info.json`。
+- `analyzeAll()` 函数现在接受 `userInfo` 参数，并将其添加到 `profile.json` 顶层。
+- `reportUser()` 函数现在会读取 `user_info.json` 并传递给 `analyzeAll()`。
+- 控制台输出现在会显示 "User info: found and loaded" 或 "User info: not found (may be from older scan)"。
+
+### Technical Details
+- 用户信息在第一次 GraphQL 请求时提取（避免重复请求）。
+- 如果 `user_info.json` 不存在（如旧版本的 scan 数据），`profile.json` 中的用户信息字段将使用默认值（null 或 0 或空数组）。
+- 所有 30 个单元测试通过。
+- 真实用户验证通过（Golenspade 和 pablo-abc）。
+
+## 0.0.9
 
 ### Added
 - **仓库主题标签（Topics）拉取**：新增 `repositoryTopics` 字段，获取仓库的主题标签（如 "react", "typescript", "docker"）。

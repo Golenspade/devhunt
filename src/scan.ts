@@ -30,14 +30,42 @@ import { parseEmailInfo } from "./email";
  * GitHub GraphQL 仓库连接响应
  *
  * 对应 user.repositories 查询的返回结构。
+ *
+ * v0.0.10: 新增用户基本信息字段（bio/company/location/websiteUrl/twitterUsername/followers/following/organizations）
  */
 interface ReposConnection {
   user: {
+    // v0.0.10: 用户基本信息（高可信度字段）
+    bio: string | null;
+    company: string | null;
+    location: string | null;
+    websiteUrl: string | null;
+    twitterUsername: string | null;
+    followers: { totalCount: number };
+    following: { totalCount: number };
+    organizations: {
+      nodes: OrganizationNode[];
+    };
+
     repositories: {
       pageInfo: { hasNextPage: boolean; endCursor: string | null };
       nodes: RepoNode[];
     };
   } | null;
+}
+
+/**
+ * 组织节点数据
+ *
+ * 包含用户所属组织的基本信息。
+ *
+ * v0.0.10: 用于识别用户的专业背景和影响力
+ */
+interface OrganizationNode {
+  login: string;
+  name: string | null;
+  description: string | null;
+  websiteUrl: string | null;
 }
 
 /**
@@ -140,6 +168,49 @@ interface PRNode {
  */
 interface UserIdResult {
   user: { id: string } | null;
+}
+
+/**
+ * 用户基本信息（输出到 user_info.json 的格式）
+ *
+ * v0.0.10: 新增用户基本信息存储
+ *
+ * 包含用户的公开个人信息，这些字段具有高可信度（直接来自 GitHub 用户设置）。
+ *
+ * 设计理念：
+ * - 这些字段是用户主动填写的，具有高可信度
+ * - 可用于 README 一致性检查（如 company 字段 vs README 中提到的公司）
+ * - followers/following 数据拉取但不计入权重（可能存在刷粉行为）
+ * - organizations 用于识别用户的专业背景和影响力
+ *
+ * 参考文档：
+ * - pod.md 中的"高可信度字段"理念
+ * - GitHub GraphQL API User 对象文档
+ */
+export interface UserInfo {
+  /** GitHub 用户名 */
+  login: string;
+  /** 用户简介 */
+  bio: string | null;
+  /** 公司/组织 */
+  company: string | null;
+  /** 地理位置 */
+  location: string | null;
+  /** 个人网站 URL */
+  websiteUrl: string | null;
+  /** Twitter 用户名 */
+  twitterUsername: string | null;
+  /** 关注者数量（拉取但不计入权重） */
+  followers: number;
+  /** 关注数量（拉取但不计入权重） */
+  following: number;
+  /** 所属组织列表（最多 10 个） */
+  organizations: {
+    login: string;
+    name: string | null;
+    description: string | null;
+    websiteUrl: string | null;
+  }[];
 }
 
 /**
@@ -461,6 +532,8 @@ const contributionsQueryPath = new URL("./queries/user_contributions.graphql", i
  * - out/<login>/raw/repos.jsonl - 仓库列表
  * - out/<login>/raw/prs.jsonl - PR 列表
  * - out/<login>/raw/commits.jsonl - Commit 历史
+ * - out/<login>/raw/contributions.json - 贡献统计
+ * - out/<login>/raw/user_info.json - 用户基本信息（v0.0.10 新增）
  * - out/<login>/raw/profile_readme.md - Profile README（如果存在）
  *
  * 设计理念：
@@ -496,13 +569,16 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   const contributionsFrom = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
 
   // 第一阶段：并行拉取独立数据源
-  const [authorId, repos, prs, profileReadme, contributions] = await Promise.all([
+  const [authorId, reposResult, prs, profileReadme, contributions] = await Promise.all([
     fetchUserId(login, options),
     fetchAllRepos(login, reposQueryPath, options),
     fetchAllPRs(login, prsQueryPath, options),
     fetchProfileReadme(login, options),
     fetchContributionsCollection(login, contributionsFrom, contributionsTo, options),
   ]);
+
+  // v0.0.10: 解构仓库列表和用户信息
+  const { repos, userInfo } = reposResult;
 
   // 第二阶段：拉取 commit 历史（需要 authorId 作为过滤条件）
   const commits = await fetchAllCommits(login, authorId, repos, since, options);
@@ -517,6 +593,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   const commitsJsonl =
     commits.map((c) => JSON.stringify(c)).join("\n") + (commits.length ? "\n" : "");
   const contributionsJson = JSON.stringify(contributions, null, 2);
+  const userInfoJson = JSON.stringify(userInfo, null, 2); // v0.0.10: 用户信息 JSON
   const profileReadmeText = profileReadme && profileReadme.trim().length > 0 ? profileReadme : null;
 
   // 写入文件
@@ -525,6 +602,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   await writeFile(join(rawOut, "prs.jsonl"), prsJsonl, "utf8");
   await writeFile(join(rawOut, "commits.jsonl"), commitsJsonl, "utf8");
   await writeFile(join(rawOut, "contributions.json"), contributionsJson, "utf8");
+  await writeFile(join(rawOut, "user_info.json"), userInfoJson, "utf8"); // v0.0.10: 写入用户信息
   if (profileReadmeText) {
     await writeFile(join(rawOut, "profile_readme.md"), profileReadmeText, "utf8");
   }
@@ -534,6 +612,7 @@ export async function scanUser(options: ScanOptions): Promise<void> {
   console.log(`  - ${join(rawOut, "prs.jsonl")}`);
   console.log(`  - ${join(rawOut, "commits.jsonl")}`);
   console.log(`  - ${join(rawOut, "contributions.json")}`);
+  console.log(`  - ${join(rawOut, "user_info.json")}`); // v0.0.10: 打印用户信息文件
   if (profileReadmeText) {
     console.log(`  - ${join(rawOut, "profile_readme.md")}`);
   } else {
@@ -544,14 +623,16 @@ export async function scanUser(options: ScanOptions): Promise<void> {
 }
 
 /**
- * 拉取用户的所有仓库
+ * 拉取用户的所有仓库和用户基本信息
  *
  * 使用 GraphQL 分页机制，拉取用户的所有公开仓库（包括 fork 和 archived）。
+ *
+ * v0.0.10: 同时提取用户基本信息（bio/company/location/websiteUrl/twitterUsername/followers/following/organizations）
  *
  * @param login - GitHub 用户名
  * @param queryPath - GraphQL 查询文件路径
  * @param options - GitHub 客户端选项（token 等）
- * @returns 仓库节点数组
+ * @returns 包含仓库列表和用户信息的对象
  *
  * 分页逻辑：
  * 1. 初始请求：after = null
@@ -563,14 +644,16 @@ export async function scanUser(options: ScanOptions): Promise<void> {
  * - 拉取所有仓库（不过滤 fork 和 archived），便于后续分析
  * - 使用 GraphQL 分页，避免单次请求数据过大
  * - 如果用户不存在，抛出 GitHubNotFoundError
+ * - v0.0.10: 在第一次请求时提取用户信息（避免重复请求）
  */
 async function fetchAllRepos(
   login: string,
   queryPath: string,
   options: GitHubClientOptions,
-): Promise<RepoNode[]> {
+): Promise<{ repos: RepoNode[]; userInfo: UserInfo }> {
   const all: RepoNode[] = [];
   let after: string | null = null;
+  let userInfo: UserInfo | null = null;
 
   // 分页拉取所有仓库
   // eslint-disable-next-line no-constant-condition
@@ -585,6 +668,26 @@ async function fetchAllRepos(
       throw new GitHubNotFoundError(`GitHub user '${login}' not found or inaccessible`, data);
     }
 
+    // v0.0.10: 在第一次请求时提取用户信息
+    if (!userInfo) {
+      userInfo = {
+        login,
+        bio: data.user.bio,
+        company: data.user.company,
+        location: data.user.location,
+        websiteUrl: data.user.websiteUrl,
+        twitterUsername: data.user.twitterUsername,
+        followers: data.user.followers.totalCount,
+        following: data.user.following.totalCount,
+        organizations: data.user.organizations.nodes.map((org) => ({
+          login: org.login,
+          name: org.name,
+          description: org.description,
+          websiteUrl: org.websiteUrl,
+        })),
+      };
+    }
+
     const conn = data.user.repositories;
 
     if (conn.nodes && conn.nodes.length > 0) {
@@ -595,7 +698,7 @@ async function fetchAllRepos(
     after = conn.pageInfo.endCursor;
   }
 
-  return all;
+  return { repos: all, userInfo: userInfo! };
 }
 
 /**
