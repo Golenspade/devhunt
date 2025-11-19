@@ -31,6 +31,13 @@ _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表
 - **RepoRecord 接口更新**：新增 `description`、`repositoryTopics` 和 `languages` 字段（可选）。
 - **README 一致性检查更新**：`computeReadmeConsistency()` 现在会比较 README 中提到的 topics 与行为数据中的 topics。
 
+### Fixed
+- **修复 0 star 仓库被忽略的问题**：`computeLanguageWeights()` 现在会为 0 star 的仓库分配最小权重 1，而不是完全忽略它们。
+  - **问题**：之前的逻辑 `if (w <= 0) continue;` 导致所有 0 star 的仓库都被跳过
+  - **影响**：新用户或没有 star 的仓库无法生成语言分布图（`skills` 字段为空数组）
+  - **修复**：使用 `const weight = w > 0 ? w : 1;` 确保所有有语言的仓库都被计入
+  - **验证**：Golenspade 用户（32 个仓库，全部 0 star）现在可以正常生成语言分布图
+
 ### Technical Details
 - **语言权重算法**：
   - 对每个仓库，计算仓库权重 `w_repo = log(1 + stars)`

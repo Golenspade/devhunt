@@ -295,8 +295,9 @@ export function computeLanguageWeights(repos: RepoRecord[]): { lang: string; wei
     if (!lang) continue;
     const stars = repo.stargazerCount ?? 0;
     const w = Math.log1p(stars);  // log(1 + stars)
-    if (w <= 0) continue;
-    weights.set(lang, (weights.get(lang) ?? 0) + w);
+    // v0.0.9 修复：允许 0 star 的仓库（使用最小权重 1）
+    const weight = w > 0 ? w : 1;
+    weights.set(lang, (weights.get(lang) ?? 0) + weight);
   }
 
   // 归一化为比例
