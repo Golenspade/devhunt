@@ -646,6 +646,115 @@ export function computeCommunityEngagement(
   return { value, talk_events: talk, code_events: code, sample_size: sampleSize };
 }
 
+/**
+ * 计算 Contribution Momentum（贡献动量 / 活跃加速度 v0）。
+ *
+ * 基于 contributions.contributionCalendar 的周维度数据，对比“最近一季”和“过去一整年”的节奏。
+ *
+ * 定义：
+ * - year_total：按 contributionCalendar.weeks[*].contributionDays[*].contributionCount 求和；
+ * - recent_quarter_total：取最近 12 周（或不足 12 周时取全部）的 contributionCount 总和；
+ * - baseline_quarter = year_total / 4；
+ * - value = recent_quarter_total / baseline_quarter；
+ *
+ * 返回值：
+ * - 当缺少 contributions 或 year_total <= 0 时，value = null，recent_quarter_total / year_total 仍保留原始计数；
+ * - status 用于粗粒度刻画当前动量：
+ *   - "accelerating"：value > 1.5
+ *   - "cooling_down"：value < 0.5 且 value >= 0.1
+ *   - "steady"：0.8 <= value <= 1.2
+ *   - "ghost"：value < 0.1（包括极低活跃 / 几乎停更），或 year_total = 0
+ *   - "unknown"：无 contributions 数据（无法判断节奏）。
+ */
+export function computeContributionMomentum(
+  contributions: ContributionsSummary | null | undefined,
+): {
+  value: number | null;
+  recent_quarter_total: number;
+  year_total: number;
+  status: "accelerating" | "steady" | "cooling_down" | "ghost" | "unknown";
+} {
+  if (!contributions) {
+    return {
+      value: null,
+      recent_quarter_total: 0,
+      year_total: 0,
+      status: "unknown",
+    };
+  }
+
+  const weeks = contributions.contributionCalendar?.weeks ?? [];
+
+  // 以日历中实际天数为准重新计算 year_total，避免 totalContributions 与细节不一致
+  let yearTotalFromDays = 0;
+  for (const week of weeks) {
+    for (const day of week.contributionDays) {
+      yearTotalFromDays += day.contributionCount ?? 0;
+    }
+  }
+
+  const yearTotal =
+    yearTotalFromDays > 0
+      ? yearTotalFromDays
+      : contributions.contributionCalendar.totalContributions ?? 0;
+
+  // 计算最近约一季（最多 12 周）的总 contributions
+  let recentTotal = 0;
+  if (weeks.length > 0) {
+    const recentWeeks = Math.min(12, weeks.length);
+    for (let i = weeks.length - recentWeeks; i < weeks.length; i++) {
+      const week = weeks[i]!;
+      for (const day of week.contributionDays) {
+        recentTotal += day.contributionCount ?? 0;
+      }
+    }
+  }
+
+  if (yearTotal <= 0) {
+    // 完全无贡献：视为 ghost，但保留 recent/year 原始计数（通常都是 0）
+    return {
+      value: null,
+      recent_quarter_total: recentTotal,
+      year_total: yearTotal,
+      status: "ghost",
+    };
+  }
+
+  const baselineQuarter = yearTotal / 4;
+  if (baselineQuarter <= 0) {
+    return {
+      value: null,
+      recent_quarter_total: recentTotal,
+      year_total: yearTotal,
+      status: "ghost",
+    };
+  }
+
+  const value = recentTotal / baselineQuarter;
+
+  let status: "accelerating" | "steady" | "cooling_down" | "ghost" | "unknown";
+  if (value < 0.1) {
+    status = "ghost";
+  } else if (value < 0.5) {
+    status = "cooling_down";
+  } else if (value > 1.5) {
+    status = "accelerating";
+  } else if (value >= 0.8 && value <= 1.2) {
+    status = "steady";
+  } else {
+    // 介于 0.5-0.8 或 1.2-1.5 之间的“轻微变化”，也归为 steady，避免过拟合。
+    status = "steady";
+  }
+
+  return {
+    value,
+    recent_quarter_total: recentTotal,
+    year_total: yearTotal,
+    status,
+  };
+}
+
+
 
 
 /**

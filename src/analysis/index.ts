@@ -11,6 +11,7 @@ import {
   computeGritFactor,
   computeForkDestiny,
   computeCommunityEngagement,
+  computeContributionMomentum,
   parseTimezoneOffset,
   buildTimezone,
   buildSummaryEvidence,
@@ -37,6 +38,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const gritFactor = computeGritFactor(repos, login);
   const forkDestiny = computeForkDestiny(repos, commits, login);
   const communityEngagement = computeCommunityEngagement(contributions ?? null);
+  const contributionMomentum = computeContributionMomentum(contributions ?? null);
   const tags = computeProfileTags(forkDestiny, communityEngagement);
 
   const timezone = buildTimezone(tzOverride, tzOffsetMinutes);
@@ -118,6 +120,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       grit_factor: gritFactor,
       fork_destiny: forkDestiny,
       community_engagement: communityEngagement,
+      contribution_momentum: contributionMomentum,
       summary_evidence: summary,
       contributions,
       readme,

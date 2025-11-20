@@ -172,6 +172,37 @@ export interface ProfileJSON {
     sample_size: number;
   };
 
+  /**
+   * Contribution Momentum（贡献动量 / 活跃加速度 v0）。
+   *
+   * 目的：
+   * - 在 Grit Factor 描述“长期可靠性”的基础上，引入“最近是否在加速 / 冷却”的时间向量；
+   * - 对齐「廉颇老矣，尚能饭否」这一类判断：近期是否还有实质贡献。
+   *
+   * 定义（基于 contributions.contributionCalendar）：
+   * - year_total：过去一整年（日历）中所有 contribution 的总和；
+   * - recent_quarter_total：最近约 1 个季度（最近 12 周）中的贡献总和；
+   * - baseline_quarter = year_total / 4；
+   * - value = recent_quarter_total / baseline_quarter；
+   *
+   * 状态分档（status）：
+   * - "accelerating"：value > 1.5，最近 1 季度明显高于过去一年的平均节奏（爆发 / 冲刺期）；
+   * - "cooling_down"：value < 0.5，最近 1 季度明显低于过去一年的平均节奏（冷却 / 退坑）；
+   * - "steady"：0.8 <= value <= 1.2，节奏基本平稳（健康的长期输出）；
+   * - "ghost"：value < 0.1 或 year_total = 0，基本无活跃（可视为“诈尸/弃号”）；
+   * - "unknown"：缺少 contributions 数据或无法计算基准时（例如 contributionCalendar 缺失）。
+   */
+  contribution_momentum: {
+    /** 最近约 1 季度的贡献动量，相对过去一年的基准（>1 加速，<1 降速），无法计算时为 null。 */
+    value: number | null;
+    /** 最近约 1 季度（最近 12 周）中的 contribution 总数。 */
+    recent_quarter_total: number;
+    /** 过去一整年日历中的 contribution 总数（来自 contributionCalendar）。 */
+    year_total: number;
+    /** 按区间划分的状态标签：accelerating / steady / cooling_down / ghost / unknown。 */
+    status: "accelerating" | "steady" | "cooling_down" | "ghost" | "unknown";
+  };
+
   /** 证据样本（用于 AI 生成具体案例） */
   summary_evidence: { sample_prs: string[]; sample_repos: string[] };
   /** GitHub 贡献汇总（contributions.json）；用于 talk vs code 等指标 */

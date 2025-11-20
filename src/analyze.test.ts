@@ -19,7 +19,7 @@ import {
 } from "./analyze";
 import type { RepoRecord, PRRecord, CommitRecord } from "./analyze";
 
-import { computeForkDestiny, computeCommunityEngagement, computeGritFactor } from "./analysis/metrics";
+import { computeForkDestiny, computeCommunityEngagement, computeGritFactor, computeContributionMomentum } from "./analysis/metrics";
 import { computeProfileTags } from "./analysis/tags";
 import type { ContributionsSummary } from "./types/github";
 
@@ -408,6 +408,86 @@ describe("analyze core metrics", () => {
     expect(result.profile.tags.length).toBeGreaterThan(0);
     expect(result.profile.tags).toContain("talker");
   });
+
+  it("computes Contribution Momentum from contribution calendar and wires into analyzeAll", () => {
+    const weeks = [] as ContributionsSummary["contributionCalendar"]["weeks"];
+
+    // 4 周基线：每周 10 次贡献
+    for (let i = 0; i < 4; i++) {
+      weeks.push({
+        contributionDays: [
+          {
+            date: `2024-01-0${i + 1}`,
+            contributionCount: 10,
+            color: "#000000",
+            contributionLevel: "FIRST_QUARTILE",
+          },
+        ],
+      });
+    }
+
+    // 最近 12 周：每周 20 次贡献（明显加速）
+    for (let i = 0; i < 12; i++) {
+      weeks.push({
+        contributionDays: [
+          {
+            date: `2024-02-${(i + 1).toString().padStart(2, "0")}`,
+            contributionCount: 20,
+            color: "#000000",
+            contributionLevel: "FIRST_QUARTILE",
+          },
+        ],
+      });
+    }
+
+    const contributions: ContributionsSummary = {
+      totalCommitContributions: 0,
+      totalIssueContributions: 0,
+      totalPullRequestContributions: 0,
+      totalPullRequestReviewContributions: 0,
+      totalRepositoriesWithContributedCommits: 0,
+      totalRepositoriesWithContributedIssues: 0,
+      totalRepositoriesWithContributedPullRequests: 0,
+      totalRepositoriesWithContributedPullRequestReviews: 0,
+      totalRepositoryContributions: 0,
+      restrictedContributionsCount: 0,
+      contributionCalendar: {
+        totalContributions: 280,
+        colors: [],
+        weeks,
+      },
+      startedAt: "2024-01-01T00:00:00Z",
+      endedAt: "2024-12-31T23:59:59Z",
+    };
+
+    const empty = computeContributionMomentum(null);
+    expect(empty.value).toBeNull();
+    expect(empty.year_total).toBe(0);
+    expect(empty.recent_quarter_total).toBe(0);
+    expect(empty.status).toBe("unknown");
+
+    const momentum = computeContributionMomentum(contributions);
+    expect(momentum.year_total).toBe(280);
+    expect(momentum.recent_quarter_total).toBe(240);
+    expect(momentum.value).not.toBeNull();
+    expect(momentum.value!).toBeCloseTo(240 / (280 / 4), 5);
+    expect(momentum.status).toBe("accelerating");
+
+    const result = analyzeAll({
+      login: "self",
+      repos: [],
+      prs: [],
+      commits: [],
+      contributions,
+      tzOverride: "+00:00",
+    });
+
+    expect(result.profile.contribution_momentum.year_total).toBe(280);
+    expect(result.profile.contribution_momentum.recent_quarter_total).toBe(240);
+    expect(result.profile.contribution_momentum.value).not.toBeNull();
+    expect(result.profile.contribution_momentum.status).toBe("accelerating");
+  });
+
 });
 
 
