@@ -5,6 +5,7 @@ import {
   computeCoreHours,
   computeUoi,
   computeExternalPrAcceptRate,
+  computeUniIndexV0,
   parseTimezoneOffset,
   buildTimezone,
   buildSummaryEvidence
@@ -15,7 +16,7 @@ import { analyzeProfileReadme, computeReadmeConsistency } from "./nlp";
  * 执行完整的开发者画像分析（模块化版本）
  */
 export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
-  const { login, repos, prs, tzOverride, profileReadmeMarkdown, userInfo } = options;
+  const { login, repos, prs, commits, tzOverride, profileReadmeMarkdown, userInfo } = options;
 
   // 计算各项指标
   const langWeights = computeLanguageWeights(repos);
@@ -24,6 +25,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const coreHours = computeCoreHours(hoursHistogram);
   const uoi = computeUoi(prs, login);
   const externalRate = computeExternalPrAcceptRate(prs, login);
+  const uniIndex = computeUniIndexV0(prs, commits, login, userInfo, true);
   const timezone = buildTimezone(tzOverride, tzOffsetMinutes);
   const summary = buildSummaryEvidence(login, repos, prs);
   const readme = analyzeProfileReadme(profileReadmeMarkdown ?? null);
@@ -94,6 +96,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       uoi_sample_size: uoiSampleSize,
       external_pr_accept_rate: externalRate,
       external_pr_sample_size: externalPrSampleSize,
+      uni_index: uniIndex,
       summary_evidence: summary,
       readme,
       consistency,

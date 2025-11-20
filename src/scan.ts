@@ -406,6 +406,8 @@ interface AssociatedPullRequestNode {
     isFork: boolean;
   } | null;
 }
+import type { CommitRecord } from "./types/github";
+
 
 /**
  * Commit 记录（输出到 commits.jsonl 的格式）
@@ -419,67 +421,8 @@ interface AssociatedPullRequestNode {
  *
  * 参考文档：CHANGELOG.md v0.0.4 中的 commits.jsonl 输出格式
  */
-interface CommitRecord {
-  /** 仓库信息 */
-  repo: {
-    owner: string;
-    name: string;
-    isOwn: boolean;  // 是否为用户自有仓库
-  };
-  /** Commit SHA */
-  sha: string;
-  /** 作者时间（authoredDate） */
-  authoredAt: string;
-  /** 提交时间（committedDate） */
-  committedAt: string;
-  /** Commit 消息标题 */
-  messageHeadline: string;
-  /** Commit 消息正文 */
-  messageBody: string | null;
-  /** 是否为 merge commit（parents > 1） */
-  isMerge: boolean;
-  /** 代码变更统计 */
-  stats: {
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-  };
-  /** 作者信息（含邮箱分类） */
-  author: {
-    login: string | null;
-    name: string | null;
-    email: string | null;
-    emailDomain: string | null;
-    emailTld: ".edu" | ".gov" | ".org" | "other";
-  };
-  /** 关联的 PR 列表（含母仓详情） */
-  associatedPRs: {
-    number: number;
-    url: string;
-    state: "OPEN" | "MERGED" | "CLOSED";
-    isMerged: boolean;
-    baseRef: string | null;
-    headRef: string | null;
-    isCrossRepository: boolean;
-    createdAt: string;
-    mergedAt: string | null;
-    closedAt: string | null;
-    baseRepo: {
-      owner: string;
-      name: string;
-      stargazerCount: number;
-      totalPrCount: number | null;
-      defaultBranch: string | null;
-    } | null;
-    headRepo: {
-      owner: string;
-      name: string;
-      stargazerCount: number | null;
-      totalPrCount: number | null;
-      isFork: boolean | null;
-    } | null;
-  }[];
-}
+// 运行时输出格式由 src/types/github.ts 中的 CommitRecord 定义，这里仅保留注释说明
+// 实际写入 commits.jsonl 时使用的是相同结构的对象
 
 /**
  * Profile README 查询结果

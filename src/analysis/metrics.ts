@@ -233,6 +233,62 @@ export function computeExternalPrAcceptRate(prs: PRRecord[], login: string): num
 }
 
 /**
+ * 计算 Uni Index v0（协作光谱的 MVP 实现）。
+ *
+ * - owned 侧：自有仓库（个人 + 可选的 org 仓库）的 commits + PRs
+ * - external 侧：外部仓库的 PRs
+ */
+export function computeUniIndexV0(
+  prs: PRRecord[],
+  commits: import("../types/github").CommitRecord[] | undefined,
+  login: string,
+  userInfo: import("../types/github").UserInfo | null | undefined,
+  includeOrgRepos: boolean = true,
+): { value: number | null; sample_size: number; include_org_repos: boolean } {
+  const lowerLogin = login.toLowerCase();
+  const orgLogins = new Set(
+    includeOrgRepos ? (userInfo?.organizations ?? []).map((o) => o.login.toLowerCase()) : [],
+  );
+
+  let ownedActivity = 0;
+  let externalActivity = 0;
+
+  // commits：只统计 isOwn=true 的 commit，视为 owned 侧的基础活跃
+  const commitList = commits ?? [];
+  for (const c of commitList) {
+    if (c.repo.isOwn) {
+      ownedActivity += 1; // v0：先采用每个 commit 记 1 分，后续可按 stats 加权
+    }
+  }
+
+  // PR：根据仓库 owner 将 PR 分为 owned vs external
+  for (const pr of prs) {
+    const owner = pr.repository.owner.login.toLowerCase();
+    const isSelf = owner === lowerLogin;
+    const isOrg = orgLogins.has(owner);
+    const isOwnedSide = isSelf || isOrg;
+
+    // 基础权重：每个 PR 记 1 分，合并的 PR 额外 +1 分
+    const base = 1;
+    const mergedBonus = pr.mergedAt ? 1 : 0;
+    const score = base + mergedBonus;
+
+    if (isOwnedSide) ownedActivity += score;
+    else externalActivity += score;
+  }
+
+  const totalActivity = ownedActivity + externalActivity;
+  if (totalActivity <= 0) {
+    return { value: null, sample_size: 0, include_org_repos: includeOrgRepos };
+  }
+
+  const value = ownedActivity / totalActivity;
+  const sampleSize = commitList.length + prs.length;
+  return { value, sample_size: sampleSize, include_org_repos: includeOrgRepos };
+}
+
+
+/**
  * 计算代表作（Top Repos）
  *
  * 基于 star 数和活跃度，对仓库进行评分和排序。

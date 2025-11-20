@@ -1,4 +1,4 @@
-import type { RepoRecord, PRRecord, UserInfo } from "./github";
+import type { RepoRecord, PRRecord, UserInfo, CommitRecord } from "./github";
 
 /**
  * Profile README 风格分类。
@@ -93,6 +93,15 @@ export interface ProfileJSON {
   external_pr_accept_rate: number | null;
   /** 外部 PR 合并率的样本量（外部 PR 总数） */
   external_pr_sample_size: number;
+  /** Uni Index（协作光谱 v0）：基于自有 commit + PR vs 外部 PR 的 Creator/Collaborator 指数 */
+  uni_index: {
+    /** Uni Index 数值（0-1，无样本或分母为 0 时为 null） */
+    value: number | null;
+    /** 参与计算的原始事件数量（commits + prs，或其他活动总和） */
+    sample_size: number;
+    /** 是否将组织仓库视为“自有仓库”纳入 owned 侧 */
+    include_org_repos: boolean;
+  };
   /** 证据样本（用于 AI 生成具体案例） */
   summary_evidence: { sample_prs: string[]; sample_repos: string[] };
   /** Profile README 分析 */
@@ -128,6 +137,8 @@ export interface AnalyzeOptions {
   repos: RepoRecord[];
   /** PR 列表 */
   prs: PRRecord[];
+  /** Commit 列表（来自 commits.jsonl，可能为空或未提供） */
+  commits?: CommitRecord[];
   /** 时区覆盖参数（用于本地化时间分析） */
   tzOverride?: string | null;
   /** Profile README 的 Markdown 内容 */

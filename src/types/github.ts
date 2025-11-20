@@ -96,3 +96,76 @@ export interface UserInfo {
   }[];
 }
 
+/**
+ * Commit 记录（输出到 commits.jsonl 的格式）。
+ *
+ * 这是经过处理和增强的 commit 数据，包含：
+ * - 仓库信息（含是否为自有仓库的标记）
+ * - Commit 基本信息（SHA、时间、消息）
+ * - 代码变更统计
+ * - 作者信息（含邮箱域名和 TLD 分类）
+ * - 关联的 PR 信息（含母仓详情）
+ */
+export interface CommitRecord {
+  /** 仓库信息 */
+  repo: {
+    owner: string;
+    name: string;
+    /** 是否为用户自有仓库 */
+    isOwn: boolean;
+  };
+  /** Commit SHA */
+  sha: string;
+  /** 作者时间（authoredDate） */
+  authoredAt: string;
+  /** 提交时间（committedDate） */
+  committedAt: string;
+  /** Commit 消息标题 */
+  messageHeadline: string;
+  /** Commit 消息正文 */
+  messageBody: string | null;
+  /** 是否为 merge commit（parents > 1） */
+  isMerge: boolean;
+  /** 代码变更统计 */
+  stats: {
+    additions: number;
+    deletions: number;
+    changedFiles: number;
+  };
+  /** 作者信息（含邮箱分类） */
+  author: {
+    login: string | null;
+    name: string | null;
+    email: string | null;
+    emailDomain: string | null;
+    emailTld: ".edu" | ".gov" | ".org" | "other";
+  };
+  /** 关联的 PR 列表（含母仓详情） */
+  associatedPRs: {
+    number: number;
+    url: string;
+    state: "OPEN" | "MERGED" | "CLOSED";
+    isMerged: boolean;
+    baseRef: string | null;
+    headRef: string | null;
+    isCrossRepository: boolean;
+    createdAt: string;
+    mergedAt: string | null;
+    closedAt: string | null;
+    baseRepo: {
+      owner: string;
+      name: string;
+      stargazerCount: number;
+      totalPrCount: number | null;
+      defaultBranch: string | null;
+    } | null;
+    headRepo: {
+      owner: string;
+      name: string;
+      stargazerCount: number | null;
+      totalPrCount: number | null;
+      isFork: boolean | null;
+    } | null;
+  }[];
+}
+

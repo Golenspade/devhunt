@@ -26,7 +26,7 @@ bun devhunt <command> [...args]
 **用法：**
 
 ```bash
-bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all]
+bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all] [--yes|-y]
 ```
 
 ### 2.1 位置参数
@@ -69,6 +69,16 @@ bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|al
 
 - `[devhunt] Commit time window: since 2023-01-01T00:00:00.000Z`
 - `[devhunt] Commit time window: full history`
+
+
+#### 2.2.3 `--yes` / `-y`
+
+- **是否必选：** 否。
+- **作用：** 跳过扫描前的“用户信息预览 + 是否继续 (y/n)”确认步骤，适用于批量扫描或 CI 环境。
+- **默认行为：**
+  - 若不指定 `--yes` / `-y`，并且当前是交互式终端（`process.stdin.isTTY === true`），则会显示用户信息预览并等待输入。
+  - 在非交互式终端（如 CI）中，即使不传 `--yes`，也会自动跳过确认，不阻塞流程。
+- **建议：** 在脚本或自动化场景中，统一使用 `--yes`（或 `-y`）以避免进程卡在等待人工输入。
 
 ### 2.3 `scan` 的输出文件
 

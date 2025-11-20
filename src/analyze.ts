@@ -13,7 +13,7 @@
  * - pod.md 中的多镜头分析理念（dev/成长/行为代理）
  */
 
-import type { RepoRecord, PRRecord, UserInfo } from "./types/github";
+import type { RepoRecord, PRRecord, UserInfo, CommitRecord } from "./types/github";
 import type {
   ProfileReadmeStyle,
   ProfileReadmeAnalysis,
@@ -27,6 +27,7 @@ export type {
   RepoRecord,
   PRRecord,
   UserInfo,
+  CommitRecord,
   ProfileReadmeStyle,
   ProfileReadmeAnalysis,
   ConsistencySignals,

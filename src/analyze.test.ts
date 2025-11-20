@@ -98,6 +98,25 @@ describe("analyze core metrics", () => {
     expect(rate).not.toBeNull();
     expect(rate).toBeCloseTo(1 / 2, 5);
   });
+  it("computes Uni Index v0 for creator vs contributor archetypes", () => {
+    const login = "self";
+    const prs: PRRecord[] = [
+      // one external merged PR
+      makePr("2024-01-02T00:00:00Z", "other", true)
+    ];
+    const commits = [
+      // two owned commits
+      { repo: { owner: "self", name: "a", isOwn: true }, sha: "1", authoredAt: "2024-01-01T00:00:00Z", committedAt: "2024-01-01T00:00:00Z", messageHeadline: "c1", messageBody: null, isMerge: false, stats: { additions: 1, deletions: 0, changedFiles: 1 }, author: { login: "self", name: "Self", email: null, emailDomain: null, emailTld: "other" as const }, associatedPRs: [] },
+      { repo: { owner: "self", name: "a", isOwn: true }, sha: "2", authoredAt: "2024-01-01T01:00:00Z", committedAt: "2024-01-01T01:00:00Z", messageHeadline: "c2", messageBody: null, isMerge: false, stats: { additions: 1, deletions: 0, changedFiles: 1 }, author: { login: "self", name: "Self", email: null, emailDomain: null, emailTld: "other" as const }, associatedPRs: [] }
+    ];
+
+    // creator-heavy: ownedActivity = 2 commits + 0 owned PR score, externalActivity = 1 base +1 merged = 2
+    // Uni = 2 / (2+2) = 0.5
+    const result = analyzeAll({ login, repos: [], prs, commits, tzOverride: "+00:00" });
+    expect(result.profile.uni_index.value).toBeCloseTo(0.5, 5);
+    expect(result.profile.uni_index.sample_size).toBe(3);
+  });
+
 
   it("returns null for UOI and external PR accept rate when there is no data", () => {
     const login = "self";

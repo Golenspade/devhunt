@@ -18,7 +18,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeAll, computeTopRepos } from "./analyze";
-import type { RepoRecord, PRRecord, UserInfo } from "./analyze";
+import type { RepoRecord, PRRecord, UserInfo, CommitRecord } from "./analyze";
 import { renderLanguagesChart, renderHoursChart } from "./charts";
 import { AnalysisError } from "./errors";
 
@@ -78,15 +78,18 @@ export async function reportUser(options: ReportOptions): Promise<void> {
   console.log(`[devhunt] Reading raw data from ${rawDir}`);
 
   // 并行读取所有原始数据文件
-  const [repos, prs, profileReadmeMarkdown, userInfo] = await Promise.all([
+  const [repos, prs, commits, profileReadmeMarkdown, userInfo] = await Promise.all([
     readJsonl<RepoRecord>(join(rawDir, "repos.jsonl")),
     readJsonl<PRRecord>(join(rawDir, "prs.jsonl")),
+    readJsonl<CommitRecord>(join(rawDir, "commits.jsonl")),
     readOptionalText(join(rawDir, "profile_readme.md")),
     readOptionalJson<UserInfo>(join(rawDir, "user_info.json")) // v0.0.10: 读取用户信息
   ]);
 
   // 打印数据加载情况
-  console.log(`[devhunt] Loaded ${repos.length} repositories and ${prs.length} pull requests`);
+  console.log(
+    `[devhunt] Loaded ${repos.length} repositories, ${prs.length} pull requests, ${commits.length} commits`,
+  );
   if (profileReadmeMarkdown && profileReadmeMarkdown.trim().length > 0) {
     console.log("[devhunt] Profile README: found and loaded");
   } else if (profileReadmeMarkdown === "") {
@@ -114,6 +117,7 @@ export async function reportUser(options: ReportOptions): Promise<void> {
       login,
       repos,
       prs,
+      commits,
       tzOverride: options.tzOverride,
       profileReadmeMarkdown,
       userInfo // v0.0.10: 传递用户信息

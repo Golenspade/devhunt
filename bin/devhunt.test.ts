@@ -29,5 +29,22 @@ describe("CLI argument parsing", () => {
     expect(login).toBe("bob");
     expect((options as CLIOptions).window).toBe("year");
   });
-});
 
+  it("parses scan command with --yes", () => {
+    const argv = ["scan", "octocat", "--yes"];
+    const { cmd, login, options } = parseArgs(argv);
+
+    expect(cmd).toBe("scan");
+    expect(login).toBe("octocat");
+    expect((options as CLIOptions).yes).toBe(true);
+  });
+
+  it("parses scan command with -y", () => {
+    const argv = ["scan", "octocat", "-y"];
+    const { cmd, login, options } = parseArgs(argv);
+
+    expect(cmd).toBe("scan");
+    expect(login).toBe("octocat");
+    expect((options as CLIOptions).yes).toBe(true);
+  });
+});
