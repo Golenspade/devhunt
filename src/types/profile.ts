@@ -113,6 +113,30 @@ export interface ProfileJSON {
   focus_ratio: number | null;
   /** Focus Ratio 的样本量（参与计算的总 bytes，作为样本量刻度） */
   focus_ratio_sample_size: number;
+
+  /**
+   * Grit Factor v2（有效交付率）：原创自有仓库中，达到“长期维护”或“有效交付（有 Star 的短平快 MVP）”状态的比例。
+   *
+   * 定义（v0 实现）：
+   * - 分母 sample_size：所有满足 owner=login 且 isFork=false 的仓库数量（原创自有仓库总数）。
+   * - 长期维护（long_term_count）：生命周期（pushedAt - createdAt）≥ 90 天的原创自有仓库数量，Star 数不限。
+   * - 有效交付（gem_count）：生命周期 < 90 天且 stargazerCount ≥ 5 的原创自有仓库数量（短平快但“有人用”的小工具/MVP）。
+   * - 噪音/烂尾（churn_count）：其余未满足长期/有效交付条件的原创自有仓库数量（test/demo/尝试后放弃的项目）。
+   * - value = (long_term_count + gem_count) / sample_size；当 sample_size=0（没有任何原创自有仓库）时为 null。
+   */
+  grit_factor: {
+    /** 有效交付率（0-1）。当 sample_size 为 0（没有任何原创自有仓库）时为 null。 */
+    value: number | null;
+    /** 分母：参与计算的原创自有仓库数量（owner=login 且 isFork=false）。 */
+    sample_size: number;
+    /** 生命周期 ≥ 90 天（pushedAt - createdAt）的原创自有仓库数量，Star 数不限。 */
+    long_term_count: number;
+    /** 生命周期 < 90 天且 stargazerCount ≥ 5 的原创自有仓库数量（短平快但完成 MVP 交付）。 */
+    gem_count: number;
+    /** 未满足长期维护或有效交付条件的原创自有仓库数量（test/demo/烂尾等）。 */
+    churn_count: number;
+  };
+
   /**
    * Fork Destiny（分歧指数 v0）：基于自有 fork 的“宿命”分布。
    *

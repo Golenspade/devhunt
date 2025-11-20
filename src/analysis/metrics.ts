@@ -171,6 +171,94 @@ export function computeTopicWeights(
 }
 
 /**
+ * 计算 Grit Factor v2（有效交付率）。
+ *
+ * 设计目标：
+ * - 只基于“原创自有仓库”（owner=login 且 isFork=false）；
+ * - 将每个仓库按生命周期和 star 数分为 Long Term / Gem / Churn；
+ * - value = (Long Term + Gem) / 原创自有仓库总数。
+ *
+ * 术语（v0 阈值，可后续调整）：
+ * - THRESHOLD_LONG_TERM_DAYS = 90 天：生命周期 ≥ 90 天视为长期维护；
+ * - THRESHOLD_GEM_STARS = 5：生命周期 < 90 天但 star ≥ 5 视为“小而美/MVP”。
+ */
+const THRESHOLD_LONG_TERM_DAYS = 90;
+const THRESHOLD_GEM_STARS = 5;
+
+export function computeGritFactor(
+  repos: RepoRecord[],
+  login: string,
+): {
+  value: number | null;
+  sample_size: number;
+  long_term_count: number;
+  gem_count: number;
+  churn_count: number;
+} {
+  const lowerLogin = login.toLowerCase();
+
+  // 1. 预筛选：仅保留“原创自有仓库”（owner=login 且 isFork=false）
+  const original = repos.filter(
+    (repo) => !repo.isFork && repo.owner?.login?.toLowerCase() === lowerLogin,
+  );
+
+  const sampleSize = original.length;
+  if (sampleSize === 0) {
+    return {
+      value: null,
+      sample_size: 0,
+      long_term_count: 0,
+      gem_count: 0,
+      churn_count: 0,
+    };
+  }
+
+  let longTerm = 0;
+  let gem = 0;
+  let churn = 0;
+
+  const MS_PER_DAY = 1000 * 60 * 60 * 24;
+
+  for (const repo of original) {
+    const createdAt = repo.createdAt;
+    const pushedAt = repo.pushedAt ?? repo.createdAt;
+
+    const createdTime = new Date(createdAt).getTime();
+    const pushedTime = new Date(pushedAt).getTime();
+
+    let diffMs = pushedTime - createdTime;
+    if (!Number.isFinite(diffMs)) {
+      diffMs = 0;
+    }
+    if (diffMs < 0) diffMs = 0;
+
+    const lifeSpanDays = Math.floor(diffMs / MS_PER_DAY);
+    const stars = repo.stargazerCount ?? 0;
+
+    if (lifeSpanDays >= THRESHOLD_LONG_TERM_DAYS) {
+      longTerm += 1;
+    } else if (stars >= THRESHOLD_GEM_STARS) {
+      // lifeSpanDays < THRESHOLD_LONG_TERM_DAYS 已通过上面的分支隐式保证
+      gem += 1;
+    } else {
+      churn += 1;
+    }
+  }
+
+  const effective = longTerm + gem;
+  const value = effective / sampleSize;
+
+  return {
+    value,
+    sample_size: sampleSize,
+    long_term_count: longTerm,
+    gem_count: gem,
+    churn_count: churn,
+  };
+}
+
+
+/**
  * 计算 24 小时活跃直方图（Hours 指标）
  *
  * 基于 PR 的创建时间，统计每个小时的活跃度。

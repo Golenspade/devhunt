@@ -19,7 +19,7 @@ import {
 } from "./analyze";
 import type { RepoRecord, PRRecord, CommitRecord } from "./analyze";
 
-import { computeForkDestiny, computeCommunityEngagement } from "./analysis/metrics";
+import { computeForkDestiny, computeCommunityEngagement, computeGritFactor } from "./analysis/metrics";
 import { computeProfileTags } from "./analysis/tags";
 import type { ContributionsSummary } from "./types/github";
 
@@ -237,6 +237,68 @@ describe("analyze core metrics", () => {
     expect(result.profile.focus_ratio_sample_size).toBe(0);
 
     expect(result.profile.consistency.readme_vs_skills_consistency).toBe("unknown");
+  });
+
+  it("computes Grit Factor v2 classification and value", () => {
+    const login = "self";
+    const repos: RepoRecord[] = [
+      // Long Term: 生命周期 >= 90 天，star 不做硬性要求
+      {
+        ...makeRepo("self", "long", 0, "2024-04-10T00:00:00Z"),
+      },
+      // Gem: 生命周期 < 90 天 且 stars >= 5
+      {
+        ...makeRepo("self", "gem", 10, "2024-02-01T00:00:00Z"),
+      },
+      // Churn: 生命周期 < 90 天 且 stars < 5
+      {
+        ...makeRepo("self", "churn", 0, "2024-01-15T00:00:00Z"),
+      },
+      // fork 仓库：应被排除
+      {
+        ...makeRepo("self", "forked", 100, "2024-05-01T00:00:00Z"),
+        isFork: true,
+      },
+      // 非 self 拥有的仓库：应被排除
+      {
+        ...makeRepo("other", "external", 100, "2024-05-01T00:00:00Z"),
+      },
+    ];
+
+    const result = computeGritFactor(repos, login);
+
+    expect(result.sample_size).toBe(3);
+    expect(result.long_term_count).toBe(1);
+    expect(result.gem_count).toBe(1);
+    expect(result.churn_count).toBe(1);
+    expect(result.value).not.toBeNull();
+    expect(result.value!).toBeCloseTo((1 + 1) / 3, 5);
+
+    const empty = computeGritFactor(repos, "ghost");
+    expect(empty.sample_size).toBe(0);
+    expect(empty.value).toBeNull();
+    expect(empty.long_term_count).toBe(0);
+    expect(empty.gem_count).toBe(0);
+    expect(empty.churn_count).toBe(0);
+  });
+
+  it("wires Grit Factor into analyzeAll profile", () => {
+    const login = "self";
+    const repos: RepoRecord[] = [
+      // longTerm
+      makeRepo("self", "a", 10, "2024-04-10T00:00:00Z"),
+      // churn
+      makeRepo("self", "b", 0, "2024-01-15T00:00:00Z"),
+    ];
+
+    const result = analyzeAll({ login, repos, prs: [], commits: [], tzOverride: "+00:00" });
+
+    expect(result.profile.grit_factor.sample_size).toBe(2);
+    expect(result.profile.grit_factor.long_term_count).toBe(1);
+    expect(result.profile.grit_factor.gem_count).toBe(0);
+    expect(result.profile.grit_factor.churn_count).toBe(1);
+    expect(result.profile.grit_factor.value).not.toBeNull();
+    expect(result.profile.grit_factor.value!).toBeCloseTo(0.5, 5);
   });
 
   it("computes Fork Destiny for contributor, variant and noise forks", () => {

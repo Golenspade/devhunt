@@ -8,6 +8,7 @@ import {
   computeUniIndexV0,
   computeNightRatio,
   computeFocusRatio,
+  computeGritFactor,
   computeForkDestiny,
   computeCommunityEngagement,
   parseTimezoneOffset,
@@ -33,6 +34,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const uniIndex = computeUniIndexV0(prs, commits, login, userInfo, true);
   const night = computeNightRatio(commits, tzOffsetMinutes);
   const focus = computeFocusRatio(repos);
+  const gritFactor = computeGritFactor(repos, login);
   const forkDestiny = computeForkDestiny(repos, commits, login);
   const communityEngagement = computeCommunityEngagement(contributions ?? null);
   const tags = computeProfileTags(forkDestiny, communityEngagement);
@@ -113,6 +115,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       night_ratio_sample_size: night.sample_size,
       focus_ratio: focus.value,
       focus_ratio_sample_size: focus.sample_size,
+      grit_factor: gritFactor,
       fork_destiny: forkDestiny,
       community_engagement: communityEngagement,
       summary_evidence: summary,
