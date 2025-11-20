@@ -2,6 +2,33 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.0.13
+
+> 当前版本（pround=0, normal=0, shame=13）。
+
+### Added
+- **Fork Destiny（fork_destiny）指标**：基于自有 fork 的 PR 归宿和 star，将 fork 划分为 contributor / variant / noise 三类，用于刻画「fork 之后是归顺、变体，还是噪音」。
+- **Community Engagement（community_engagement）指标**：使用 `contributions.json` 中的 issue / review / commit / PR / repo 事件，计算 Talk vs Code 比例和样本量，量化「说」与「做」的平衡。
+- **标签系统（tags）**：基于 Fork Destiny + Community Engagement 推导 archetype 标签（如 `hard_forker`、`variant_leader`、`fork_cleaner`、`silent_maker` 等），直接写入 `profile.json.tags`。
+- **Grit Factor v2（grit_factor）指标**：按原创自有仓库的生命周期与 star，将仓库划分为 Long Term / Gem / Churn，并计算有效交付率 value = (Long Term + Gem) / 原创自有仓库总数。
+
+### Changed
+- `ProfileJSON` 新增字段：
+  - `fork_destiny`：自有 fork 宿命分布摘要（total_forks / contributor_forks / variant_forks / noise_forks / stars）。
+  - `community_engagement`：Talk vs Code 事件计数、比例与样本量。
+  - `tags`：基于上述指标推导出的机器可读标签数组。
+  - `grit_factor`：原创自有仓库的长期/小而美/噪音分布及有效交付率。
+- `analyzeAll()` 现在会读取 `contributions.json`，计算社区卷入度和标签，并将 Fork Destiny / Community Engagement / Grit Factor / tags 写入 `profile.json` 顶层。
+
+### Tests
+- 在 `src/analyze.test.ts` 中为新指标补充单元测试，覆盖：
+  - Fork Destiny 三类 fork 的分类逻辑（contributor / variant / noise）。
+  - Community Engagement 的 Talk / Code 计数和比例计算。
+  - 标签系统和 Grit Factor 的边界与典型场景（无样本 / 多样本混合）。
+- 使用真实用户数据进行端到端验证：
+  - 通过 `bun devhunt report Golenspade / karpathy / yyx990803 / A-kirami` 检查 `profile.json` 中的 `fork_destiny`、`community_engagement`、`tags` 和 `grit_factor` 是否符合对这些账号的直觉印象。
+
+
 ## 0.0.11
 
 > 当前版本（pround=0, normal=0, shame=11）。

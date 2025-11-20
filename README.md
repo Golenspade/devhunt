@@ -2,7 +2,7 @@
 
 GitHub 开发者画像工具 MVP（基于 Bun + TypeScript + GitHub GraphQL）。
 
-> 当前版本：**0.0.11**（pround.normal.shame）
+> 当前版本：**0.0.13**（pround.normal.shame）
 
 ---
 
