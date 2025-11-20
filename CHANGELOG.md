@@ -2,6 +2,22 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.0.14
+
+> 当前版本（pround=0, normal=0, shame=14）。
+
+### Added
+- **Contribution Momentum（contribution_momentum）指标**：基于 `contributions.json` 的贡献日历（contributionCalendar），对比最近约一季（最近 12 周）与过去一整年的平均节奏，给出“贡献动量/加速度”评分，用于回答「廉颇老矣，尚能饭否」。
+
+### Changed
+- `ProfileJSON` 新增 `contribution_momentum` 字段，包含动量 value、最近一季总贡献 `recent_quarter_total`、过去一年总贡献 `year_total` 以及状态分档（accelerating / steady / cooling_down / ghost / unknown）。
+- `analyzeAll()` 现在会在计算 Community Engagement 的同时计算 Contribution Momentum，并将其写入 `profile.json.contribution_momentum`。
+
+### Tests
+- 在 `src/analyze.test.ts` 中新增 Contribution Momentum 的单元测试和接线测试，覆盖无数据、基准平稳和明显加速等场景。
+- 使用 `bun devhunt report Golenspade / karpathy / A-kirami` 检查 `profile.json` 中的 `contribution_momentum` 数值和 status 是否符合直觉（如 Golenspade 为 accelerating，A-kirami 为 cooling_down）。
+
+
 ## 0.0.13
 
 > 当前版本（pround=0, normal=0, shame=13）。
