@@ -102,6 +102,14 @@ export interface ProfileJSON {
     /** 是否将组织仓库视为“自有仓库”纳入 owned 侧 */
     include_org_repos: boolean;
   };
+  /** Night Ratio（熬夜率）：基于 commit.authoredAt 的夜间 commit 占比，排除 merge commit。无有效样本时为 null。 */
+  night_ratio: number | null;
+  /** Night Ratio 指标的样本量（参与计算的 commit 数量，排除 merge 和无效时间） */
+  night_ratio_sample_size: number;
+  /** Focus Ratio（专注率）：按语言 Bytes 聚合后，Top1 语言字节占比（0-1）。无语言字节数据时为 null。 */
+  focus_ratio: number | null;
+  /** Focus Ratio 的样本量（参与计算的总 bytes，作为样本量刻度） */
+  focus_ratio_sample_size: number;
   /** 证据样本（用于 AI 生成具体案例） */
   summary_evidence: { sample_prs: string[]; sample_repos: string[] };
   /** Profile README 分析 */

@@ -6,6 +6,8 @@ import {
   computeTopicWeights,
   computeHoursHistogram,
   computeCoreHours,
+  computeNightRatio,
+  computeFocusRatio,
   computeUoi,
   computeExternalPrAcceptRate,
   computeTopRepos,
@@ -15,7 +17,7 @@ import {
   analyzeProfileReadme,
   computeReadmeConsistency
 } from "./analyze";
-import type { RepoRecord, PRRecord } from "./analyze";
+import type { RepoRecord, PRRecord, CommitRecord } from "./analyze";
 
 function makeRepo(owner: string, name: string, stars: number, pushedAt: string): RepoRecord {
   return {
@@ -46,6 +48,28 @@ function makePr(createdAt: string, owner: string, merged = false): PRRecord {
   };
 }
 
+function makeCommit(authoredAt: string, overrides: Partial<CommitRecord> = {}): CommitRecord {
+  return {
+    repo: { owner: "self", name: "a", isOwn: true },
+    sha: authoredAt,
+    authoredAt,
+    committedAt: authoredAt,
+    messageHeadline: "c",
+    messageBody: null,
+    isMerge: false,
+    stats: { additions: 1, deletions: 0, changedFiles: 1 },
+    author: {
+      login: "self",
+      name: "Self",
+      email: null,
+      emailDomain: null,
+      emailTld: "other"
+    },
+    associatedPRs: [],
+    ...overrides
+  };
+}
+
 describe("analyze core metrics", () => {
   it("computes language weights normalized by stars", () => {
     const repos: RepoRecord[] = [
@@ -56,12 +80,57 @@ describe("analyze core metrics", () => {
         primaryLanguage: null
       }
     ];
-
     const weights = computeLanguageWeights(repos);
     expect(weights.length).toBe(1);
     const first = weights[0]!;
     expect(first.lang).toBe("TypeScript");
     expect(first.weight).toBeCloseTo(1, 5);
+  });
+
+
+
+  it("computes Focus Ratio based on raw language bytes", () => {
+    const repos: RepoRecord[] = [
+      {
+        ...makeRepo("self", "a", 100, "2024-01-02T00:00:00Z"),
+        languages: {
+          edges: [
+            { size: 9000, node: { name: "TypeScript" } },
+            { size: 1000, node: { name: "JavaScript" } }
+          ]
+        }
+      },
+      {
+        ...makeRepo("self", "b", 10, "2024-01-03T00:00:00Z"),
+        languages: {
+          edges: [{ size: 500, node: { name: "Python" } }]
+        }
+      }
+    ];
+
+    const focus = computeFocusRatio(repos);
+    expect(focus.sample_size).toBe(9000 + 1000 + 500);
+    expect(focus.value).not.toBeNull();
+    // Top1 = TypeScript: 9000 / 10500   ~0.857
+    expect(focus.value!).toBeCloseTo(9000 / 10500, 5);
+  });
+
+
+  it("computes Night Ratio from commits with authoredAt and excludes merges", () => {
+    const commits: CommitRecord[] = [
+      // 夜间 commit：23:00、01:00（UTC），时区偏移为 0
+      makeCommit("2024-01-01T23:00:00Z"),
+      makeCommit("2024-01-02T01:00:00Z"),
+      // 白天 commit：09:00（UTC）
+      makeCommit("2024-01-02T09:00:00Z"),
+      // 夜间 merge commit：应被排除
+      makeCommit("2024-01-02T22:00:00Z", { isMerge: true })
+    ];
+
+    const night = computeNightRatio(commits, 0);
+    expect(night.sample_size).toBe(3); // 排除了 merge commit
+    expect(night.value).not.toBeNull();
+    expect(night.value!).toBeCloseTo(2 / 3, 5); // 2 个夜间 / 3 个非 merge commit
   });
 
   it("bins PRs into hours and derives core hours", () => {
@@ -158,6 +227,11 @@ describe("analyze core metrics", () => {
     expect(result.profile.login).toBe("self");
     expect(result.profile.skills.length).toBeGreaterThan(0);
     expect(result.hoursHistogram.length).toBe(24);
+    expect(result.profile.night_ratio).toBeNull();
+    expect(result.profile.night_ratio_sample_size).toBe(0);
+    expect(result.profile.focus_ratio).toBeNull();
+    expect(result.profile.focus_ratio_sample_size).toBe(0);
+
     expect(result.profile.consistency.readme_vs_skills_consistency).toBe("unknown");
   });
 });

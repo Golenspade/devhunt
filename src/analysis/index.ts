@@ -6,6 +6,8 @@ import {
   computeUoi,
   computeExternalPrAcceptRate,
   computeUniIndexV0,
+  computeNightRatio,
+  computeFocusRatio,
   parseTimezoneOffset,
   buildTimezone,
   buildSummaryEvidence
@@ -26,6 +28,8 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const uoi = computeUoi(prs, login);
   const externalRate = computeExternalPrAcceptRate(prs, login);
   const uniIndex = computeUniIndexV0(prs, commits, login, userInfo, true);
+  const night = computeNightRatio(commits, tzOffsetMinutes);
+  const focus = computeFocusRatio(repos);
   const timezone = buildTimezone(tzOverride, tzOffsetMinutes);
   const summary = buildSummaryEvidence(login, repos, prs);
   const readme = analyzeProfileReadme(profileReadmeMarkdown ?? null);
@@ -97,6 +101,10 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       external_pr_accept_rate: externalRate,
       external_pr_sample_size: externalPrSampleSize,
       uni_index: uniIndex,
+      night_ratio: night.value,
+      night_ratio_sample_size: night.sample_size,
+      focus_ratio: focus.value,
+      focus_ratio_sample_size: focus.sample_size,
       summary_evidence: summary,
       readme,
       consistency,

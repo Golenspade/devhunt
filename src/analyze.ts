@@ -54,6 +54,8 @@ import {
   computeUoi as _computeUoi,
   computeExternalPrAcceptRate as _computeExternalPrAcceptRate,
   computeTopRepos as _computeTopRepos,
+  computeNightRatio as _computeNightRatio,
+  computeFocusRatio as _computeFocusRatio,
   parseTimezoneOffset as _parseTimezoneOffset,
   buildTimezone as _buildTimezone,
   buildSummaryEvidence as _buildSummaryEvidence
@@ -293,6 +295,43 @@ export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number):
 export function computeCoreHours(hist: (number | null)[]): { start: string; end: string }[] {
   return _computeCoreHours(hist);
 }
+
+/**
+ * 计算 Night Ratio（熬夜率）。
+ *
+ * - 仅使用 commit.authoredAt 作为“写代码时间”的代理；
+ * - 排除 merge commit（isMerge=true），避免一键合并/CI 噪声；
+ * - 使用与 PR hours 相同的 tzOffsetMinutes，将 UTC 时间转换为本地小时后判断是否属于夜间窗口。
+ *
+ * 夜间窗口 v0 约定为当地时间 [22:00, 04:00]，即小时桶 {22, 23, 0, 1, 2, 3, 4}。
+ *
+ * @param commits - Commit 列表（可选）。
+ * @param tzOffsetMinutes - 时区偏移量（分钟）。
+ * @returns { value, sample_size }，若 sample_size=0，则 value 为 null。
+ */
+export function computeNightRatio(
+  commits: CommitRecord[] | undefined,
+  tzOffsetMinutes: number
+): { value: number | null; sample_size: number } {
+  return _computeNightRatio(commits, tzOffsetMinutes);
+}
+
+/**
+ * 计算 Focus Ratio（专注率）。
+ *
+ * - 基于 repos.languages.edges.size（原始 bytes），不做 star 加权；
+ * - 汇总所有仓库的语言 bytes 后，计算 Top1 语言 bytes / 总 bytes；
+ * - 用于刻画“工作量是否主要集中在单一语言栈”。
+ *
+ * @param repos - 仓库列表。
+ * @returns { value, sample_size }，value 为 0-1 的比例；若无语言 bytes 数据则 value 为 null，sample_size=0。
+ */
+export function computeFocusRatio(
+  repos: RepoRecord[]
+): { value: number | null; sample_size: number } {
+  return _computeFocusRatio(repos);
+}
+
 
 /**
  * 计算上游倾向指数（UOI - Upstream Orientation Index）

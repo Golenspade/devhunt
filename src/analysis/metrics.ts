@@ -1,4 +1,4 @@
-import type { RepoRecord, PRRecord } from "../types/github";
+import type { RepoRecord, PRRecord, CommitRecord } from "../types/github";
 
 /**
  * 计算语言权重（Skills 指标）
@@ -85,6 +85,45 @@ export function computeLanguageWeightsV2(
       weighted_bytes: stats.weighted_bytes
     }))
     .sort((a, b) => b.weight - a.weight);
+}
+
+/**
+ * 计算 Focus Ratio（专注率，纯字节视角）。
+ *
+ * - 使用 languages.edges.size 的原始 bytes 聚合，不做 star 加权；
+ * - 将所有仓库的语言字节数相加，计算 Top1 语言的字节占比：
+ *   focus_ratio = max(bytes_lang) / sum(bytes_all_langs)
+ * - 用于刻画“主要精力是否集中在单一语言栈”。
+ */
+export function computeFocusRatio(
+  repos: RepoRecord[]
+): { value: number | null; sample_size: number } {
+  const langBytes = new Map<string, number>();
+
+  for (const repo of repos) {
+    const languages = repo.languages?.edges;
+    if (!languages || languages.length === 0) continue;
+
+    for (const edge of languages) {
+      const lang = edge.node.name;
+      const prev = langBytes.get(lang) ?? 0;
+      langBytes.set(lang, prev + edge.size);
+    }
+  }
+
+  let totalBytes = 0;
+  let maxBytes = 0;
+  for (const bytes of langBytes.values()) {
+    totalBytes += bytes;
+    if (bytes > maxBytes) maxBytes = bytes;
+  }
+
+  if (totalBytes <= 0) {
+    return { value: null, sample_size: 0 };
+  }
+
+  const value = maxBytes / totalBytes;
+  return { value, sample_size: totalBytes };
 }
 
 /**
@@ -187,6 +226,51 @@ export function computeCoreHours(hist: (number | null)[]): { start: string; end:
 
   return top.map((p) => ({ start: formatHour(p.start), end: formatHour(p.end) }));
 }
+
+/**
+ * 计算 Night Ratio（熬夜率）。
+ *
+ * - 仅使用 commit.authoredAt 作为“写代码时间”的代理；
+ * - 排除 merge commit（isMerge=true），避免一键合并/CI 噪声；
+ * - 先转成本地小时（与 PR hours 使用同一 tzOffsetMinutes），再判断是否落在夜间窗口。
+ *
+ * 夜间窗口 v0 约定为当地时间 [22:00, 04:00]，即小时桶 {22, 23, 0, 1, 2, 3, 4}。
+ */
+export function computeNightRatio(
+  commits: CommitRecord[] | undefined,
+  tzOffsetMinutes: number
+): { value: number | null; sample_size: number } {
+  const list = commits ?? [];
+
+  let night = 0;
+  let total = 0;
+
+  for (const c of list) {
+    // 排除 merge commit
+    if (c.isMerge) continue;
+
+    const dt = new Date(c.authoredAt);
+    if (Number.isNaN(dt.getTime())) continue;
+
+    total++;
+
+    const utcHours = dt.getUTCHours();
+    const localHours = (utcHours + tzOffsetMinutes / 60 + 24 * 3) % 24;
+    const hour = Math.floor(localHours) % 24;
+
+    // 夜间小时集合：22, 23, 0, 1, 2, 3, 4
+    if (hour === 22 || hour === 23 || hour === 0 || hour === 1 || hour === 2 || hour === 3 || hour === 4) {
+      night++;
+    }
+  }
+
+  if (total === 0) {
+    return { value: null, sample_size: 0 };
+  }
+
+  return { value: night / total, sample_size: total };
+}
+
 
 /**
  * 计算上游倾向指数（UOI - Upstream Orientation Index）
