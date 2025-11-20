@@ -169,3 +169,37 @@ export interface CommitRecord {
   }[];
 }
 
+
+
+/**
+ * GitHub 贡献汇总（contributions.json 的结构）。
+ *
+ * 这是从 GitHub ContributionsCollection 对象截取的顶层汇总字段，
+ * 在 analysis 阶段用于计算 Talk vs Code 等社区行为指标。
+ */
+export interface ContributionsSummary {
+  totalCommitContributions: number;
+  totalIssueContributions: number;
+  totalPullRequestContributions: number;
+  totalPullRequestReviewContributions: number;
+  totalRepositoriesWithContributedCommits: number;
+  totalRepositoriesWithContributedIssues: number;
+  totalRepositoriesWithContributedPullRequests: number;
+  totalRepositoriesWithContributedPullRequestReviews: number;
+  totalRepositoryContributions: number;
+  restrictedContributionsCount: number;
+  contributionCalendar: {
+    totalContributions: number;
+    colors: string[];
+    weeks: {
+      contributionDays: {
+        date: string;
+        contributionCount: number;
+        color: string;
+        contributionLevel: string;
+      }[];
+    }[];
+  };
+  startedAt: string;
+  endedAt: string;
+}

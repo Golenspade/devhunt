@@ -1,4 +1,4 @@
-import type { RepoRecord, PRRecord, UserInfo, CommitRecord } from "./github";
+import type { RepoRecord, PRRecord, UserInfo, CommitRecord, ContributionsSummary } from "./github";
 
 /**
  * Profile README 风格分类。
@@ -79,6 +79,9 @@ export interface ProfileJSON {
     websiteUrl: string | null;
   }[];
 
+  /** 标签系统（基于 Fork Destiny + Community Engagement 等指标推导出的 archetypes） */
+  tags: string[];
+
   /** 时区信息（自动推断 / 用户覆盖 / 实际使用） */
   timezone: { auto: string | null; override: string | null; used: string | null };
   /** 技能画像（语言 + 权重） */
@@ -110,8 +113,46 @@ export interface ProfileJSON {
   focus_ratio: number | null;
   /** Focus Ratio 的样本量（参与计算的总 bytes，作为样本量刻度） */
   focus_ratio_sample_size: number;
+  /**
+   * Fork Destiny（分歧指数 v0）：基于自有 fork 的“宿命”分布。
+   *
+   * - total_forks: 自有 fork 仓库总数（owner = login 且 isFork=true）
+   * - contributor_forks: 至少有一条向上游仓库（不同 owner）发起并被合并的 PR 的 fork 数量
+   * - variant_forks: 未被上游合并，但 star 绝对值或相对母仓占比较高的 fork 数量
+   * - noise_forks: 既没有被上游合并，也没有明显 star 的 fork 数量
+   */
+  fork_destiny: {
+    total_forks: number;
+    contributor_forks: number;
+    variant_forks: number;
+    noise_forks: number;
+    total_fork_stars: number;
+    variant_fork_stars: number;
+  };
+
+  /**
+   * Community Engagement（社区卷入度 v0）。
+   *
+   * - talk_events = issues + PR reviews
+   * - code_events = commits + PRs + repo contributions
+   * - value = talk_events / (talk_events + code_events)，无样本时为 null
+   */
+  community_engagement: {
+    /** talk 侧事件数量（issue + PR review） */
+    talk_events: number;
+    /** code 侧事件数量（commit + PR + repo contribution） */
+    code_events: number;
+    /** 归一化后的 Talk vs Code 比例（0-1，偏大说明更“会说话”/triage，多社区互动） */
+    value: number | null;
+    /** 总样本量（talk_events + code_events） */
+    sample_size: number;
+  };
+
   /** 证据样本（用于 AI 生成具体案例） */
   summary_evidence: { sample_prs: string[]; sample_repos: string[] };
+  /** GitHub 贡献汇总（contributions.json）；用于 talk vs code 等指标 */
+  contributions?: ContributionsSummary | null;
+
   /** Profile README 分析 */
   readme: ProfileReadmeAnalysis;
   /** README 自述 vs 行为数据的一致性信号 */
@@ -147,6 +188,8 @@ export interface AnalyzeOptions {
   prs: PRRecord[];
   /** Commit 列表（来自 commits.jsonl，可能为空或未提供） */
   commits?: CommitRecord[];
+  /** GitHub 贡献汇总（contributions.json）；用于 talk vs code 等指标 */
+  contributions?: ContributionsSummary | null;
   /** 时区覆盖参数（用于本地化时间分析） */
   tzOverride?: string | null;
   /** Profile README 的 Markdown 内容 */

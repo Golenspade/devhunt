@@ -19,6 +19,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeAll, computeTopRepos } from "./analyze";
 import type { RepoRecord, PRRecord, UserInfo, CommitRecord } from "./analyze";
+import type { ContributionsSummary } from "./types/github";
+
 import { renderLanguagesChart, renderHoursChart } from "./charts";
 import { AnalysisError } from "./errors";
 
@@ -78,12 +80,13 @@ export async function reportUser(options: ReportOptions): Promise<void> {
   console.log(`[devhunt] Reading raw data from ${rawDir}`);
 
   // 并行读取所有原始数据文件
-  const [repos, prs, commits, profileReadmeMarkdown, userInfo] = await Promise.all([
+  const [repos, prs, commits, profileReadmeMarkdown, userInfo, contributions] = await Promise.all([
     readJsonl<RepoRecord>(join(rawDir, "repos.jsonl")),
     readJsonl<PRRecord>(join(rawDir, "prs.jsonl")),
     readJsonl<CommitRecord>(join(rawDir, "commits.jsonl")),
     readOptionalText(join(rawDir, "profile_readme.md")),
-    readOptionalJson<UserInfo>(join(rawDir, "user_info.json")) // v0.0.10: 读取用户信息
+    readOptionalJson<UserInfo>(join(rawDir, "user_info.json")), // v0.0.10: 读取用户信息
+    readOptionalJson<ContributionsSummary>(join(rawDir, "contributions.json"))
   ]);
 
   // 打印数据加载情况
@@ -118,6 +121,7 @@ export async function reportUser(options: ReportOptions): Promise<void> {
       repos,
       prs,
       commits,
+      contributions,
       tzOverride: options.tzOverride,
       profileReadmeMarkdown,
       userInfo // v0.0.10: 传递用户信息

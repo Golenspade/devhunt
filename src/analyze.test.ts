@@ -19,6 +19,10 @@ import {
 } from "./analyze";
 import type { RepoRecord, PRRecord, CommitRecord } from "./analyze";
 
+import { computeForkDestiny, computeCommunityEngagement } from "./analysis/metrics";
+import { computeProfileTags } from "./analysis/tags";
+import type { ContributionsSummary } from "./types/github";
+
 function makeRepo(owner: string, name: string, stars: number, pushedAt: string): RepoRecord {
   return {
     name,
@@ -233,6 +237,114 @@ describe("analyze core metrics", () => {
     expect(result.profile.focus_ratio_sample_size).toBe(0);
 
     expect(result.profile.consistency.readme_vs_skills_consistency).toBe("unknown");
+  });
+
+  it("computes Fork Destiny for contributor, variant and noise forks", () => {
+    const login = "self";
+    const repos: RepoRecord[] = [
+      { ...makeRepo("self", "fork-contrib", 10, "2024-01-01T00:00:00Z"), isFork: true },
+      { ...makeRepo("self", "fork-variant", 100, "2024-01-01T00:00:00Z"), isFork: true },
+      { ...makeRepo("self", "fork-noise", 0, "2024-01-01T00:00:00Z"), isFork: true }
+    ];
+
+    const commits: CommitRecord[] = [
+      makeCommit("2024-01-01T00:00:00Z", {
+        repo: { owner: "self", name: "fork-contrib", isOwn: true },
+        associatedPRs: [
+          {
+            number: 1,
+            url: "https://example.com/pr/1",
+            state: "MERGED",
+            isMerged: true,
+            baseRef: "main",
+            headRef: "feature",
+            isCrossRepository: true,
+            createdAt: "2024-01-01T00:00:00Z",
+            mergedAt: "2024-01-02T00:00:00Z",
+            closedAt: "2024-01-02T00:00:00Z",
+            baseRepo: {
+              owner: "upstream",
+              name: "core",
+              stargazerCount: 200,
+              totalPrCount: 10,
+              defaultBranch: "main"
+            },
+            headRepo: {
+              owner: "self",
+              name: "fork-contrib",
+              stargazerCount: 10,
+              totalPrCount: 1,
+              isFork: true
+            }
+          }
+        ]
+      })
+    ];
+
+    const result = computeForkDestiny(repos, commits, login);
+    expect(result.total_forks).toBe(3);
+    expect(result.contributor_forks).toBe(1);
+    expect(result.variant_forks).toBe(1);
+    expect(result.noise_forks).toBe(1);
+    expect(result.total_fork_stars).toBe(10 + 100 + 0);
+    expect(result.variant_fork_stars).toBe(100);
+
+    const tags = computeProfileTags(result, { talk_events: 0, code_events: 0, value: null, sample_size: 0 });
+    expect(tags).toContain("hard_forker");
+    expect(tags).toContain("variant_leader");
+    expect(tags).not.toContain("fork_cleaner");
+  });
+
+  it("computes Community Engagement from contributions summary and wires into analyzeAll", () => {
+    const contributions: ContributionsSummary = {
+      totalCommitContributions: 10,
+      totalIssueContributions: 30,
+      totalPullRequestContributions: 5,
+      totalPullRequestReviewContributions: 15,
+      totalRepositoriesWithContributedCommits: 1,
+      totalRepositoriesWithContributedIssues: 1,
+      totalRepositoriesWithContributedPullRequests: 1,
+      totalRepositoriesWithContributedPullRequestReviews: 1,
+      totalRepositoryContributions: 2,
+      restrictedContributionsCount: 0,
+      contributionCalendar: {
+        totalContributions: 0,
+        colors: [],
+        weeks: []
+      },
+      startedAt: "2024-01-01T00:00:00Z",
+      endedAt: "2024-12-31T23:59:59Z"
+    };
+
+    const empty = computeCommunityEngagement(null);
+    expect(empty.sample_size).toBe(0);
+    expect(empty.value).toBeNull();
+
+    const ce = computeCommunityEngagement(contributions);
+    expect(ce.talk_events).toBe(30 + 15);
+    expect(ce.code_events).toBe(10 + 5 + 2);
+    expect(ce.sample_size).toBe(30 + 15 + 10 + 5 + 2);
+    expect(ce.value).not.toBeNull();
+    expect(ce.value!).toBeCloseTo((30 + 15) / (30 + 15 + 10 + 5 + 2), 5);
+
+    const result = analyzeAll({
+      login: "self",
+      repos: [],
+      prs: [],
+      commits: [],
+      contributions,
+      tzOverride: "+00:00"
+    });
+
+    expect(result.profile.community_engagement.talk_events).toBe(30 + 15);
+    expect(result.profile.community_engagement.code_events).toBe(10 + 5 + 2);
+    expect(result.profile.community_engagement.sample_size).toBe(30 + 15 + 10 + 5 + 2);
+    expect(result.profile.community_engagement.value).toBeCloseTo((30 + 15) / (30 + 15 + 10 + 5 + 2), 5);
+    expect(result.profile.contributions).toEqual(contributions);
+
+    // 根据 Talk vs Code 的比例打标签
+    expect(result.profile.tags.length).toBeGreaterThan(0);
+    expect(result.profile.tags).toContain("talker");
   });
 });
 

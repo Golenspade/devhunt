@@ -8,17 +8,20 @@ import {
   computeUniIndexV0,
   computeNightRatio,
   computeFocusRatio,
+  computeForkDestiny,
+  computeCommunityEngagement,
   parseTimezoneOffset,
   buildTimezone,
-  buildSummaryEvidence
+  buildSummaryEvidence,
 } from "./metrics";
 import { analyzeProfileReadme, computeReadmeConsistency } from "./nlp";
+import { computeProfileTags } from "./tags";
 
 /**
  * 执行完整的开发者画像分析（模块化版本）
  */
 export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
-  const { login, repos, prs, commits, tzOverride, profileReadmeMarkdown, userInfo } = options;
+  const { login, repos, prs, commits, tzOverride, profileReadmeMarkdown, userInfo, contributions } = options;
 
   // 计算各项指标
   const langWeights = computeLanguageWeights(repos);
@@ -30,6 +33,10 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const uniIndex = computeUniIndexV0(prs, commits, login, userInfo, true);
   const night = computeNightRatio(commits, tzOffsetMinutes);
   const focus = computeFocusRatio(repos);
+  const forkDestiny = computeForkDestiny(repos, commits, login);
+  const communityEngagement = computeCommunityEngagement(contributions ?? null);
+  const tags = computeProfileTags(forkDestiny, communityEngagement);
+
   const timezone = buildTimezone(tzOverride, tzOffsetMinutes);
   const summary = buildSummaryEvidence(login, repos, prs);
   const readme = analyzeProfileReadme(profileReadmeMarkdown ?? null);
@@ -92,6 +99,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       followers: userInfo?.followers ?? 0,
       following: userInfo?.following ?? 0,
       organizations: userInfo?.organizations ?? [],
+      tags,
 
       timezone,
       skills: langWeights,
@@ -105,7 +113,10 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       night_ratio_sample_size: night.sample_size,
       focus_ratio: focus.value,
       focus_ratio_sample_size: focus.sample_size,
+      fork_destiny: forkDestiny,
+      community_engagement: communityEngagement,
       summary_evidence: summary,
+      contributions,
       readme,
       consistency,
       data_coverage: {

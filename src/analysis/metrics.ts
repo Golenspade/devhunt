@@ -1,4 +1,4 @@
-import type { RepoRecord, PRRecord, CommitRecord } from "../types/github";
+import type { RepoRecord, PRRecord, CommitRecord, ContributionsSummary } from "../types/github";
 
 /**
  * 计算语言权重（Skills 指标）
@@ -370,6 +370,194 @@ export function computeUniIndexV0(
   const sampleSize = commitList.length + prs.length;
   return { value, sample_size: sampleSize, include_org_repos: includeOrgRepos };
 }
+
+/**
+ * 计算 Fork Destiny（分歧指数 v0）。
+ *
+ * 设计目标：
+ * - 单位：自有 fork 仓库（owner=login 且 isFork=true）
+ * - 使用 commits.associatedPRs 捕捉从 fork -> 上游仓库的 PR 及其合并状态；
+ * - 再结合 fork 与母仓的 star 数，将 fork 分成三类：
+ *   - contributor_forks：至少有一条指向上游仓库且被合并的 PR（归顺派）
+ *   - variant_forks：没有被合并，但自身 star 很高，或相对母仓的 star 占比很高（变体领袖）
+ *   - noise_forks：既没被合并，也几乎没人 star 的 fork（路人 / 噪声）
+ *
+ * 注意：
+ * - 由于我们只抓取默认分支上的 commit，且只看与 commit 关联的 PR，
+ *   所以 contributor_forks 是“保守下界”：有可能漏掉未出现在 commit.associatedPRs 里的 PR。
+ */
+export function computeForkDestiny(
+  repos: RepoRecord[],
+  commits: CommitRecord[] | undefined,
+  login: string,
+): {
+  total_forks: number;
+  contributor_forks: number;
+  variant_forks: number;
+  noise_forks: number;
+  total_fork_stars: number;
+  variant_fork_stars: number;
+} {
+  const lowerLogin = login.toLowerCase();
+
+  // 只统计“自有 fork”：owner=login 且 isFork=true
+  const ownedForks = repos.filter(
+    (repo) => repo.isFork && repo.owner.login.toLowerCase() === lowerLogin,
+  );
+
+  const totalForks = ownedForks.length;
+  if (totalForks === 0) {
+    return {
+      total_forks: 0,
+      contributor_forks: 0,
+      variant_forks: 0,
+      noise_forks: 0,
+      total_fork_stars: 0,
+      variant_fork_stars: 0,
+    };
+  }
+
+  type ForkInfo = {
+    repoKey: string;
+    owner: string;
+    name: string;
+    stars: number;
+    hasMergedExternalPr: boolean;
+    maxBaseStars: number | null;
+  };
+
+  const forkMap = new Map<string, ForkInfo>();
+  for (const repo of ownedForks) {
+    const key = `${repo.owner.login.toLowerCase()}/${repo.name.toLowerCase()}`;
+    forkMap.set(key, {
+      repoKey: key,
+      owner: repo.owner.login,
+      name: repo.name,
+      stars: repo.stargazerCount ?? 0,
+      hasMergedExternalPr: false,
+      maxBaseStars: null,
+    });
+  }
+
+  const commitList = commits ?? [];
+  for (const commit of commitList) {
+    const key = `${commit.repo.owner.toLowerCase()}/${commit.repo.name.toLowerCase()}`;
+    const info = forkMap.get(key);
+    if (!info) continue;
+
+    for (const pr of commit.associatedPRs ?? []) {
+      if (!pr.isCrossRepository) continue;
+      const baseRepo = pr.baseRepo;
+      if (!baseRepo) continue;
+
+      const baseOwner = baseRepo.owner.toLowerCase();
+      if (baseOwner === lowerLogin) {
+        // self/self 之间的 fork，视为内部移动而非“归顺上游”
+        continue;
+      }
+
+      const baseStars = baseRepo.stargazerCount ?? 0;
+      if (baseStars > 0) {
+        if (info.maxBaseStars == null || baseStars > info.maxBaseStars) {
+          info.maxBaseStars = baseStars;
+        }
+      }
+
+      if (pr.isMerged) {
+        info.hasMergedExternalPr = true;
+      }
+    }
+  }
+
+  // v0 阈值：
+  // - 绝对阈值：fork 自身 star >= 50 视为“有一定气候”的独立路线
+  // - 相对阈值：fork star / 母仓 star >= 0.3 视为“相对体量可观”的变体
+  const ABS_VARIANT_STAR = 50;
+  const REL_VARIANT_RATIO = 0.3;
+
+  let contributor = 0;
+  let variant = 0;
+  let noise = 0;
+  let totalStars = 0;
+  let variantStars = 0;
+
+  for (const info of forkMap.values()) {
+    const stars = info.stars;
+    totalStars += stars;
+
+    if (info.hasMergedExternalPr) {
+      contributor += 1;
+      continue;
+    }
+
+    const absHigh = stars >= ABS_VARIANT_STAR;
+    const relHigh =
+      info.maxBaseStars != null &&
+      info.maxBaseStars > 0 &&
+      stars / info.maxBaseStars >= REL_VARIANT_RATIO;
+
+    if (absHigh || relHigh) {
+      variant += 1;
+      variantStars += stars;
+    } else {
+      noise += 1;
+    }
+  }
+
+  return {
+    total_forks: totalForks,
+    contributor_forks: contributor,
+    variant_forks: variant,
+    noise_forks: noise,
+    total_fork_stars: totalStars,
+    variant_fork_stars: variantStars,
+  };
+}
+
+/**
+ * 计算 Community Engagement（社区卷入度 v0）。
+ *
+ * 数据来源：scan 阶段写入的 contributions.json（ContributionsSummary）。
+ *
+ * 定义：
+ * - talk_events = totalIssueContributions + totalPullRequestReviewContributions
+ * - code_events = totalCommitContributions + totalPullRequestContributions + totalRepositoryContributions
+ * - sample_size = talk_events + code_events
+ * - value = talk_events / sample_size
+ *
+ * 设计取向：
+ * - 不试图区分“好 / 坏”行为，只是刻画 “说话 / 协作” vs “写码” 的风格；
+ * - restrictedContributionsCount 暂不计入分子 / 分母（GitHub 无法拆分其中的 talk/code）。
+ */
+export function computeCommunityEngagement(
+  contributions: ContributionsSummary | null | undefined,
+): {
+  value: number | null;
+  talk_events: number;
+  code_events: number;
+  sample_size: number;
+} {
+  if (!contributions) {
+    return { value: null, talk_events: 0, code_events: 0, sample_size: 0 };
+  }
+
+  const talk =
+    (contributions.totalIssueContributions ?? 0) +
+    (contributions.totalPullRequestReviewContributions ?? 0);
+  const code =
+    (contributions.totalCommitContributions ?? 0) +
+    (contributions.totalPullRequestContributions ?? 0) +
+    (contributions.totalRepositoryContributions ?? 0);
+
+  const sampleSize = talk + code;
+  if (sampleSize <= 0) {
+    return { value: null, talk_events: talk, code_events: code, sample_size: 0 };
+  }
+
+  const value = talk / sampleSize;
+  return { value, talk_events: talk, code_events: code, sample_size: sampleSize };
+}
+
 
 
 /**
