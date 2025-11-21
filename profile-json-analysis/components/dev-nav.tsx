@@ -13,7 +13,7 @@ export function DevNav() {
   ]
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex gap-2 rounded-lg border border-white/10 bg-[#1c1c21]/95 p-2 backdrop-blur-sm">
+    <div className="fixed top-4 right-4 z-[100] flex gap-2 rounded-lg border border-white/10 bg-[#1c1c21]/95 p-2 backdrop-blur-sm">
       {pages.map((page) => (
         <Link
           key={page.path}

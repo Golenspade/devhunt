@@ -43,10 +43,10 @@ export default function ProcessingPage() {
       currentDelay = task.delay
     })
 
-    // Redirect to dashboard after completion
-    setTimeout(() => {
-      router.push("/")
-    }, currentDelay + 1000)
+    // Redirect to dashboard after completion (disabled for development)
+    // setTimeout(() => {
+    //   router.push("/")
+    // }, currentDelay + 1000)
   }, [router])
 
   const handleCancel = () => {
@@ -77,13 +77,13 @@ export default function ProcessingPage() {
       <div className="relative z-10 min-h-screen flex flex-col items-center justify-center p-4">
         <div className="flex flex-col items-center w-full max-w-md">
           {/* Animated Logo */}
-          <div className="relative w-24 h-24 mb-12 animate-in fade-in zoom-in duration-700">
+          <div className="relative w-32 h-16 mb-12 animate-in fade-in zoom-in duration-700 flex items-center justify-center">
             <Image
               src="/images/gemini-generated-image-pxdy7lpxdy7lpxdy.jpeg"
               alt="DevHunt"
-              width={96}
-              height={96}
-              className="rounded-2xl"
+              width={128}
+              height={64}
+              className="rounded-2xl max-w-full max-h-full object-contain"
             />
             <div className="absolute inset-0 bg-accent blur-[60px] opacity-20 animate-pulse" />
           </div>

@@ -133,11 +133,13 @@ export default function Home() {
       <header className="border-b border-border/50 bg-card/50 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center gap-3">
-            <img
-              src="/images/gemini-generated-image-pxdy7lpxdy7lpxdy.jpeg"
-              alt="DevHunt Logo"
-              className="w-10 h-10 rounded-lg"
-            />
+            <div className="w-16 h-10 flex items-center justify-center">
+              <img
+                src="/images/gemini-generated-image-pxdy7lpxdy7lpxdy.jpeg"
+                alt="DevHunt Logo"
+                className="max-w-full max-h-full object-contain rounded-lg"
+              />
+            </div>
             <div>
               <h2 className="text-xl font-bold text-foreground">DevHunt</h2>
               <p className="text-xs text-muted-foreground">Developer Intelligence Platform</p>

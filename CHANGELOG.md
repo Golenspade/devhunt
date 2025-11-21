@@ -2,6 +2,27 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.1.1
+
+> 当前版本（pround=0, normal=1, shame=1）。
+
+### Fixed
+- **前端 UI 优化**：
+  - 修复 DevNav 导航按钮 z-index 冲突导致无法点击的问题（将 z-index 从 `z-50` 提升到 `z-[100]`）。
+  - 调整 Dashboard 页面 logo 容器尺寸（从 `w-10 h-10` 改为 `w-16 h-10`），防止 logo 变形。
+  - 调整 Processing 页面 logo 尺寸（从 `w-24 h-24` 改为 `w-32 h-16`），使其宽度约为下方文字宽度的三分之二，视觉更协调。
+
+### Changed
+- **开发体验改进**：
+  - Processing 页面自动跳转功能已注释（便于开发调试），可通过取消注释恢复自动跳转到 Dashboard 的行为。
+
+### Tests
+- 使用 Playwright 浏览器自动化工具验证：
+  - DevNav 三个导航按钮（Dashboard、Launch、Processing）均可正常点击。
+  - Logo 在不同页面显示正常，无变形。
+  - Processing 页面动画和日志输出正常。
+
+
 ## 0.1.0
 
 > 当前版本（pround=0, normal=1, shame=0）。
