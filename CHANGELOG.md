@@ -2,6 +2,26 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.1.0
+
+> 当前版本（pround=0, normal=1, shame=0）。
+
+### Added
+- 新增前端 Dashboard 子项目 `profile-json-analysis/`：
+  - 使用 Next.js 16 + React 19 + shadcn/ui 构建 DevHunt Profile 可视化界面。
+  - 当前以内置 mock 数据为主，用于快速预览画像设计与布局。
+
+### Changed
+- 根项目版本号从 `0.0.14` 提升到 `0.1.0`，标记为「前端可视化」阶段的第一个版本。
+- CLI 使用方式保持不变：
+  - 仍通过 `bun devhunt scan <login>` / `bun devhunt report <login>` 生成 `out/<login>/profile.json` 等文件。
+- 后续计划将 `profile-json-analysis` Dashboard 对接真实 `profile.json` / `top_repos.json`，支持以 GitHub 用户名为入口动态展示画像。
+
+### Tests
+- 使用 `pnpm dev` 在本地启动 `profile-json-analysis`，人工验证页面布局、交互与样式正常渲染。
+- 核心 CLI 分析逻辑未改动，建议在变更后定期运行 `bun test` / `bun devhunt report <login>` 做回归验证。
+
+
 ## 0.0.14
 
 > 当前版本（pround=0, normal=0, shame=14）。
