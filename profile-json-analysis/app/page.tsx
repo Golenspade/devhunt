@@ -1,3 +1,7 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { ProfileHeader } from "@/components/profile-header"
 import { MetricCard } from "@/components/metric-card"
 import { GritFactorChart } from "@/components/grit-factor-chart"
@@ -8,125 +12,159 @@ import { MomentumIndicator } from "@/components/momentum-indicator"
 import { ContributionCalendar } from "@/components/contribution-calendar"
 import { LanguageProficiencyChart } from "@/components/language-proficiency-chart"
 import { PRByHourChart } from "@/components/pr-by-hour-chart"
+import type { ApiResponse, DashboardProfile } from "@/types/profile"
+
+// TopRepos 组件期望的数据格式
+interface Repo {
+  name: string
+  description: string
+  stars: number
+  language: string
+  type: "long_term" | "gem" | "variant" | "churn"
+  url: string
+}
 
 export default function Home() {
-  const mockProfile = {
-    login: "devhunter",
-    bio: "Full-stack developer passionate about open source and developer tools. Building the future of code collaboration.",
-    company: "DevHunt Labs",
-    location: "San Francisco, CA",
-    followers: 1247,
-    following: 342,
-    tags: ["hard_forker", "variant_leader", "accelerating", "high_grit"],
-    gritFactor: {
-      value: 0.73,
-      longTermCount: 18,
-      gemCount: 5,
-      churnCount: 3,
-      sampleSize: 26,
-    },
-    uniIndex: {
-      value: 0.68,
-      sampleSize: 45,
-    },
-    momentum: "accelerating" as const,
-    velocity: 1.5,
-    nightRatio: 0.34,
-    focusRatio: 0.62,
-    uoi: 0.45,
-    externalPrAcceptRate: 0.78,
-    skills: [
-      { lang: "TypeScript", weight: 0.85 },
-      { lang: "Python", weight: 0.62 },
-      { lang: "Rust", weight: 0.48 },
-      { lang: "Go", weight: 0.35 },
-    ],
-  }
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [profile, setProfile] = useState<DashboardProfile | null>(null)
+  const [topRepos, setTopRepos] = useState<Repo[]>([])
+  const [contributions, setContributions] = useState<{ date: string; count: number }[]>([])
+  const [prByHourData, setPrByHourData] = useState<{ hour: number; count: number }[]>([])
 
-  const topRepos = [
-    {
-      name: "devhunter/code-analyzer",
-      description:
-        "AI-powered code analysis tool that provides insights into code quality and developer behavior patterns",
-      stars: 2847,
-      language: "TypeScript",
-      type: "long_term" as const,
-      url: "https://github.com/devhunter/code-analyzer",
-    },
-    {
-      name: "devhunter/react-flow-builder",
-      description: "Visual workflow builder for React applications with drag-and-drop interface",
-      stars: 1523,
-      language: "TypeScript",
-      type: "gem" as const,
-      url: "https://github.com/devhunter/react-flow-builder",
-    },
-    {
-      name: "devhunter/next-auth-extended",
-      description: "Extended authentication solution for Next.js with additional providers and features",
-      stars: 892,
-      language: "TypeScript",
-      type: "variant" as const,
-      url: "https://github.com/devhunter/next-auth-extended",
-    },
-    {
-      name: "devhunter/tailwind-components",
-      description: "Collection of reusable Tailwind CSS components for rapid UI development",
-      stars: 645,
-      language: "TypeScript",
-      type: "long_term" as const,
-      url: "https://github.com/devhunter/tailwind-components",
-    },
-    {
-      name: "devhunter/api-gateway",
-      description: "Lightweight API gateway with rate limiting, caching, and authentication",
-      stars: 423,
-      language: "Go",
-      type: "long_term" as const,
-      url: "https://github.com/devhunter/api-gateway",
-    },
-  ]
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // 从 sessionStorage 获取用户名
+        const configStr = sessionStorage.getItem("devhunt-config")
+        if (!configStr) {
+          // 如果没有配置，使用默认用户名或跳转到 launch 页面
+          router.push("/launch")
+          return
+        }
 
-  const prByHourData = [
-    { hour: 0, count: 2 },
-    { hour: 1, count: 1 },
-    { hour: 2, count: 0 },
-    { hour: 3, count: 1 },
-    { hour: 4, count: 0 },
-    { hour: 5, count: 0 },
-    { hour: 6, count: 3 },
-    { hour: 7, count: 5 },
-    { hour: 8, count: 8 },
-    { hour: 9, count: 12 },
-    { hour: 10, count: 15 },
-    { hour: 11, count: 18 },
-    { hour: 12, count: 14 },
-    { hour: 13, count: 16 },
-    { hour: 14, count: 20 },
-    { hour: 15, count: 22 },
-    { hour: 16, count: 19 },
-    { hour: 17, count: 15 },
-    { hour: 18, count: 12 },
-    { hour: 19, count: 10 },
-    { hour: 20, count: 8 },
-    { hour: 21, count: 6 },
-    { hour: 22, count: 4 },
-    { hour: 23, count: 3 },
-  ]
+        const config = JSON.parse(configStr)
+        const username = config.username
 
-  const generateMockContributions = () => {
-    const contributions = []
-    const today = new Date()
-    for (let i = 0; i < 365; i++) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-      contributions.push({
-        date: date.toISOString().split("T")[0],
-        count: Math.floor(Math.random() * 15),
-      })
+        // 调用 API 获取数据
+        const response = await fetch(`/api/profile/${username}`)
+        if (!response.ok) {
+          throw new Error("Failed to load profile data")
+        }
+
+        const data: ApiResponse = await response.json()
+
+        // 转换数据格式以适配现有组件
+        // 将后端的 momentum 状态映射到前端组件支持的状态
+        const mapMomentumStatus = (
+          status: "accelerating" | "cooling_down" | "steady" | "ghost" | "unknown"
+        ): "accelerating" | "stable" | "declining" => {
+          if (status === "accelerating") return "accelerating"
+          if (status === "cooling_down" || status === "ghost") return "declining"
+          return "stable"
+        }
+
+        const dashboardProfile: DashboardProfile = {
+          login: data.profile.login,
+          bio: data.profile.bio ?? "",
+          company: data.profile.company,
+          location: data.profile.location,
+          followers: data.profile.followers,
+          following: data.profile.following,
+          tags: data.profile.tags,
+          gritFactor: {
+            value: data.profile.grit_factor.value ?? 0,
+            longTermCount: data.profile.grit_factor.long_term_count,
+            gemCount: data.profile.grit_factor.gem_count,
+            churnCount: data.profile.grit_factor.churn_count,
+            sampleSize: data.profile.grit_factor.sample_size,
+          },
+          uniIndex: {
+            value: data.profile.uni_index.value ?? 0,
+            sampleSize: data.profile.uni_index.sample_size,
+          },
+          momentum: mapMomentumStatus(data.profile.contribution_momentum.status),
+          velocity: data.profile.contribution_momentum.value ?? 0,
+          nightRatio: data.profile.night_ratio ?? 0,
+          focusRatio: data.profile.focus_ratio ?? 0,
+          uoi: data.profile.uoi ?? 0,
+          externalPrAcceptRate: data.profile.external_pr_accept_rate ?? 0,
+          skills: data.profile.skills,
+        }
+
+        setProfile(dashboardProfile)
+
+        // 转换 topRepos 数据以适配 TopRepos 组件
+        const transformedRepos = data.topRepos.map((repo) => ({
+          name: repo.repo,
+          description: repo.description ?? "No description available",
+          stars: repo.stars,
+          language: repo.lang ?? "Unknown",
+          type: "long_term" as const, // 简化处理，可以根据 score 或其他字段判断
+          url: `https://github.com/${repo.repo}`,
+        }))
+        setTopRepos(transformedRepos)
+
+        // 转换 hoursHistogram 数据
+        const hourlyData = data.hoursHistogram.map((count, hour) => ({
+          hour,
+          count,
+        }))
+        setPrByHourData(hourlyData)
+
+        // 转换 contributions 数据
+        if (data.profile.contributions?.weeks) {
+          const contribData = data.profile.contributions.weeks.flatMap((week) =>
+            week.contributionDays.map((day) => ({
+              date: day.date,
+              count: day.contributionCount,
+            }))
+          )
+          setContributions(contribData)
+        } else {
+          setContributions([])
+        }
+
+        setLoading(false)
+      } catch (err) {
+        console.error("Error loading profile data:", err)
+        setError(err instanceof Error ? err.message : "Unknown error")
+        setLoading(false)
+      }
     }
-    return contributions
+
+    loadData()
+  }, [router])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading profile data...</p>
+        </div>
+      </div>
+    )
   }
+
+  if (error || !profile) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">Error: {error || "Profile not found"}</p>
+          <button
+            onClick={() => router.push("/launch")}
+            className="px-4 py-2 bg-accent text-accent-foreground rounded-lg"
+          >
+            Go to Launch
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+
 
   return (
     <main className="min-h-screen bg-background">
@@ -169,27 +207,27 @@ export default function Home() {
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6 mb-6">
           <div className="flex-1">
             <ProfileHeader
-              login={mockProfile.login}
-              bio={mockProfile.bio}
-              company={mockProfile.company}
-              location={mockProfile.location}
-              followers={mockProfile.followers}
-              following={mockProfile.following}
-              tags={mockProfile.tags}
+              login={profile.login}
+              bio={profile.bio}
+              company={profile.company ?? undefined}
+              location={profile.location ?? undefined}
+              followers={profile.followers}
+              following={profile.following}
+              tags={profile.tags}
             />
           </div>
-          <MomentumIndicator status={mockProfile.momentum} velocity={mockProfile.velocity} />
+          <MomentumIndicator status={profile.momentum} velocity={profile.velocity} />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-          <GritFactorChart data={mockProfile.gritFactor} />
-          <UniSpectrum value={mockProfile.uniIndex.value} sampleSize={mockProfile.uniIndex.sampleSize} />
+          <GritFactorChart data={profile.gritFactor} />
+          <UniSpectrum value={profile.uniIndex.value} sampleSize={profile.uniIndex.sampleSize} />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
           <MetricCard
             title="Night Ratio"
-            value={`${Math.round(mockProfile.nightRatio * 100)}%`}
+            value={`${Math.round(profile.nightRatio * 100)}%`}
             subtitle="Late night commits"
             icon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -205,7 +243,7 @@ export default function Home() {
 
           <MetricCard
             title="Focus Ratio"
-            value={`${Math.round(mockProfile.focusRatio * 100)}%`}
+            value={`${Math.round(profile.focusRatio * 100)}%`}
             subtitle="Primary language focus"
             icon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -227,7 +265,7 @@ export default function Home() {
 
           <MetricCard
             title="UOI"
-            value={`${Math.round(mockProfile.uoi * 100)}%`}
+            value={`${Math.round(profile.uoi * 100)}%`}
             subtitle="Upstream orientation"
             icon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -243,7 +281,7 @@ export default function Home() {
 
           <MetricCard
             title="PR Accept Rate"
-            value={`${Math.round(mockProfile.externalPrAcceptRate * 100)}%`}
+            value={`${Math.round(profile.externalPrAcceptRate * 100)}%`}
             subtitle="External contributions"
             icon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -263,12 +301,12 @@ export default function Home() {
             <PRByHourChart data={prByHourData} />
           </div>
           <div className="lg:col-span-3">
-            <LanguageProficiencyChart skills={mockProfile.skills} />
+            <LanguageProficiencyChart skills={profile.skills} />
           </div>
         </div>
 
         <div className="mb-6">
-          <ContributionCalendar data={generateMockContributions()} />
+          <ContributionCalendar data={contributions} />
         </div>
 
         <div className="mb-6">
@@ -276,10 +314,10 @@ export default function Home() {
         </div>
 
         <IntelligenceFooter
-          tags={mockProfile.tags}
-          gritFactor={mockProfile.gritFactor.value}
-          momentum={mockProfile.momentum}
-          uniIndex={mockProfile.uniIndex.value}
+          tags={profile.tags}
+          gritFactor={profile.gritFactor.value}
+          momentum={profile.momentum}
+          uniIndex={profile.uniIndex.value}
         />
 
         <div className="mt-8 text-center text-xs text-muted-foreground">

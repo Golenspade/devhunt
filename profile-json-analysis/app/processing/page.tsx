@@ -8,6 +8,7 @@ export default function ProcessingPage() {
   const router = useRouter()
   const [logs, setLogs] = useState<string[]>([])
   const [username, setUsername] = useState("")
+  const [isProcessing, setIsProcessing] = useState(true)
 
   useEffect(() => {
     // Retrieve config from sessionStorage
@@ -20,33 +21,68 @@ export default function ProcessingPage() {
     const config = JSON.parse(configStr)
     setUsername(config.username)
 
-    // Simulate log streaming
-    const tasks = [
-      { msg: "Initializing DevHunt engine...", delay: 500 },
-      { msg: "Resolving GitHub API endpoint...", delay: 1200 },
-      { msg: "Authenticating secure session...", delay: 2000 },
-      { msg: "Fetching repos (Page 1 of 3)...", delay: 2800 },
-      { msg: "Analyzing 482 commits...", delay: 3800 },
-      { msg: "Calculating Grit Factor (v2)...", delay: 4800 },
-      { msg: "Compiling Cyber Profile...", delay: 5800 },
-      { msg: "DONE. Launching report.", delay: 6500 },
-    ]
-
-    let currentDelay = 0
-    tasks.forEach((task) => {
-      setTimeout(() => {
-        setLogs((prev) => {
-          const newLogs = [...prev, task.msg]
-          return newLogs.length > 5 ? newLogs.slice(-5) : newLogs
+    // 调用真实的后端 API
+    const runAnalysis = async () => {
+      try {
+        const response = await fetch('/api/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            username: config.username,
+            token: config.token,
+            timezone: config.timezone,
+            window: config.window,
+          }),
         })
-      }, task.delay)
-      currentDelay = task.delay
-    })
 
-    // Redirect to dashboard after completion (disabled for development)
-    // setTimeout(() => {
-    //   router.push("/")
-    // }, currentDelay + 1000)
+        if (!response.ok) {
+          throw new Error('Failed to start analysis')
+        }
+
+        // 读取 Server-Sent Events 流
+        const reader = response.body?.getReader()
+        const decoder = new TextDecoder()
+
+        if (!reader) {
+          throw new Error('No response body')
+        }
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split('\n\n')
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = JSON.parse(line.slice(6))
+              if (data.log) {
+                setLogs((prev) => {
+                  const newLogs = [...prev, data.log]
+                  return newLogs.length > 10 ? newLogs.slice(-10) : newLogs
+                })
+              }
+              if (data.done) {
+                setIsProcessing(false)
+                // 跳转到 dashboard
+                setTimeout(() => {
+                  router.push('/')
+                }, 2000)
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Analysis error:', error)
+        setLogs((prev) => [...prev, `Error: ${error instanceof Error ? error.message : 'Unknown error'}`])
+        setIsProcessing(false)
+      }
+    }
+
+    runAnalysis()
   }, [router])
 
   const handleCancel = () => {

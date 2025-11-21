@@ -761,11 +761,32 @@ export function computeContributionMomentum(
  * 计算代表作（Top Repos）
  *
  * 基于 star 数和活跃度，对仓库进行评分和排序。
+ *
+ * 过滤规则：
+ * - 排除可能为空的仓库（无语言、无 star、无 fork、无代码）
+ * - 排除已归档的仓库
  */
 export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
   const yearMs = 365 * 24 * 60 * 60 * 1000;
 
   return repos
+    .filter((repo) => {
+      // 过滤掉可能为空的仓库：
+      // 1. 没有主要语言
+      // 2. 没有任何语言数据（languages.edges 为空或不存在）
+      // 3. 没有 star 和 fork
+      const hasLanguage = repo.primaryLanguage?.name != null;
+      const hasLanguageData = repo.languages?.edges && repo.languages.edges.length > 0;
+      const hasStars = (repo.stargazerCount ?? 0) > 0;
+      const hasForks = (repo.forkCount ?? 0) > 0;
+      const isArchived = repo.isArchived ?? false;
+
+      // 如果仓库既没有语言数据，又没有 star 和 fork，很可能是空仓库
+      const isEmpty = !hasLanguage && !hasLanguageData && !hasStars && !hasForks;
+
+      // 排除空仓库和已归档的仓库
+      return !isEmpty && !isArchived;
+    })
     .map((repo) => {
       const stars = repo.stargazerCount ?? 0;
       const pushedAt = repo.pushedAt ? new Date(repo.pushedAt) : null;
