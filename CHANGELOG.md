@@ -2,6 +2,21 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.1.2
+
+> 当前版本（pround=0, normal=1, shame=2）。
+
+### Fixed
+- **Dashboard 图表配色统一**：
+  - 将 Dashboard 中「PR Count by Hour」和「Language Proficiency」两个 Recharts 柱状图的坐标轴刻度文字颜色统一为前景色白色（通过 `ChartContainer` 的全局 Recharts 选择器，将 `fill-muted-foreground` 调整为 `fill-foreground`）。
+  - 确保这两个图表与页面其他文字颜色保持一致，避免坐标轴偏灰、可读性差的问题。
+
+### Tests
+- 使用 `pnpm dev` 在 `profile-json-analysis/` 目录启动前端，通过 Playwright 打开 `http://localhost:3000`：
+  - 人工检查「PR Count by Hour」与「Language Proficiency」图表的坐标轴与刻度文字均为白色，并与 Dashboard 其他区域视觉一致。
+  - 生成截图 `devhunt-dashboard-charts.png` 以备审查。
+
+
 ## 0.1.1
 
 > 当前版本（pround=0, normal=1, shame=1）。

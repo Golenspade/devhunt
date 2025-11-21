@@ -27,7 +27,7 @@ export function PRByHourChart({ data }: PRByHourChartProps) {
           config={{
             count: {
               label: "PR Count",
-              color: "hsl(var(--primary))",
+              color: "#d97757",
             },
           }}
           className="h-72 w-full"
@@ -37,21 +37,23 @@ export function PRByHourChart({ data }: PRByHourChartProps) {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
               <XAxis
                 dataKey="hour"
-                stroke="hsl(var(--muted-foreground))"
+                stroke="hsl(var(--foreground))"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
                 interval={2}
+                tick={{ fill: "hsl(var(--foreground))" }}
               />
               <YAxis
-                stroke="hsl(var(--muted-foreground))"
+                stroke="hsl(var(--foreground))"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
                 allowDecimals={false}
+                tick={{ fill: "hsl(var(--foreground))" }}
               />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="count" fill="var(--color-count)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="count" fill="#d97757" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartContainer>

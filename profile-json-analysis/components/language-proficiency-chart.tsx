@@ -26,7 +26,7 @@ export function LanguageProficiencyChart({ skills }: LanguageProficiencyChartPro
           config={{
             proficiency: {
               label: "Proficiency",
-              color: "hsl(var(--primary))",
+              color: "#d97757",
             },
           }}
           className="h-72 w-full"
@@ -36,20 +36,22 @@ export function LanguageProficiencyChart({ skills }: LanguageProficiencyChartPro
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
               <XAxis
                 dataKey="language"
-                stroke="hsl(var(--muted-foreground))"
+                stroke="hsl(var(--foreground))"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
+                tick={{ fill: "hsl(var(--foreground))" }}
               />
               <YAxis
-                stroke="hsl(var(--muted-foreground))"
+                stroke="hsl(var(--foreground))"
                 fontSize={12}
                 tickLine={false}
                 axisLine={false}
                 tickFormatter={(value) => `${value}%`}
+                tick={{ fill: "hsl(var(--foreground))" }}
               />
               <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="proficiency" fill="var(--color-proficiency)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="proficiency" fill="#d97757" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartContainer>
