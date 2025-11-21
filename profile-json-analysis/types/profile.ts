@@ -10,6 +10,7 @@ export interface ProfileData {
   location: string | null;
   websiteUrl: string | null;
   twitterUsername: string | null;
+  avatarUrl: string | null;
   followers: number;
   following: number;
   organizations: {
@@ -110,6 +111,7 @@ export interface DashboardProfile {
   bio: string;
   company: string | null;
   location: string | null;
+  avatarUrl: string | null;
   followers: number;
   following: number;
   tags: string[];

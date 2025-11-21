@@ -83,6 +83,8 @@ export interface UserInfo {
   websiteUrl: string | null;
   /** Twitter 用户名 */
   twitterUsername: string | null;
+  /** 用户头像 URL */
+  avatarUrl: string;
   /** 关注者数量 */
   followers: number;
   /** 关注数量 */

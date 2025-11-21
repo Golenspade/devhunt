@@ -41,6 +41,7 @@ interface ReposConnection {
     location: string | null;
     websiteUrl: string | null;
     twitterUsername: string | null;
+    avatarUrl: string;
     followers: { totalCount: number };
     following: { totalCount: number };
     organizations: {
@@ -201,6 +202,8 @@ export interface UserInfo {
   websiteUrl: string | null;
   /** Twitter 用户名 */
   twitterUsername: string | null;
+  /** 用户头像 URL */
+  avatarUrl: string;
   /** 关注者数量（拉取但不计入权重） */
   followers: number;
   /** 关注数量（拉取但不计入权重） */
@@ -676,6 +679,7 @@ async function fetchAllRepos(
         location: data.user.location,
         websiteUrl: data.user.websiteUrl,
         twitterUsername: data.user.twitterUsername,
+        avatarUrl: data.user.avatarUrl,
         followers: data.user.followers.totalCount,
         following: data.user.following.totalCount,
         organizations: data.user.organizations.nodes.map((org) => ({

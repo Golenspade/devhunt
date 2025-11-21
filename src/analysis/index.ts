@@ -100,6 +100,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
       location: userInfo?.location ?? null,
       websiteUrl: userInfo?.websiteUrl ?? null,
       twitterUsername: userInfo?.twitterUsername ?? null,
+      avatarUrl: userInfo?.avatarUrl ?? null,
       followers: userInfo?.followers ?? 0,
       following: userInfo?.following ?? 0,
       organizations: userInfo?.organizations ?? [],

@@ -2,6 +2,58 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.1.3
+
+> 当前版本（pround=0, normal=1, shame=3）。
+
+### Added
+- **用户头像拉取**：
+  - 在 GraphQL 查询中添加 `avatarUrl` 字段，从 GitHub API 获取用户头像 URL。
+  - 后端数据存储：`out/<login>/raw/user_info.json` 和 `out/<login>/profile.json` 中新增 `avatarUrl` 字段。
+  - 前端显示：ProfileHeader 组件现在会显示真实的 GitHub 头像图片。
+  - Fallback 机制：当头像不可用时，显示用户名首字母的圆形占位符。
+
+### Changed
+- **后端类型定义更新**：
+  - `src/queries/user_repos.graphql` - 添加 `avatarUrl` 字段到用户查询。
+  - `src/scan.ts` - `ReposConnection` 和 `UserInfo` 接口新增 `avatarUrl: string` 字段。
+  - `src/types/github.ts` - `UserInfo` 接口新增 `avatarUrl: string` 字段。
+  - `src/types/profile.ts` - `ProfileJSON` 接口新增 `avatarUrl: string | null` 字段。
+  - `src/analysis/index.ts` - 数据提取逻辑包含 `avatarUrl` 字段。
+- **前端类型定义更新**：
+  - `profile-json-analysis/types/profile.ts` - `ProfileData` 和 `DashboardProfile` 接口新增 `avatarUrl: string | null` 字段。
+  - `profile-json-analysis/components/profile-header.tsx` - 支持显示头像图片或首字母占位符。
+  - `profile-json-analysis/app/page.tsx` - 数据传递管道包含 `avatarUrl` 字段。
+- **前端与后端数据集成**：
+  - 前端 Dashboard 现在完全使用来自后端 API 的真实数据（`/api/profile/[login]` 和 `/api/analyze`）。
+  - 移除了所有 mock 数据，实现了完整的数据流：Launch → Processing → Dashboard。
+  - Processing 页面通过 Server-Sent Events (SSE) 实时流式传输后端命令日志。
+- **空仓库过滤优化**：
+  - `src/analysis/metrics.ts` 中的 `computeTopRepos` 函数现在会过滤掉空仓库和已归档的仓库。
+  - 过滤条件：排除没有主要语言、没有语言数据、没有 star 也没有 fork 的仓库。
+
+### Fixed
+- **CLI 用户确认优化**：
+  - 文档化了 `--yes` / `-y` 参数，用于跳过用户确认提示（适用于批量扫描或 CI 环境）。
+  - 使用方式：`bun devhunt scan <username> --yes`
+
+### Tests
+- 使用真实用户数据验证头像功能：
+  - **karpathy** - 头像 URL: `https://avatars.githubusercontent.com/u/241138?u=...&v=4` ✅
+  - **yyx990803** - 头像 URL: `https://avatars.githubusercontent.com/u/499550?u=...&v=4` ✅
+- 前端 Dashboard 测试：
+  - 验证头像图片正确显示（圆形边框，24x24 尺寸）。
+  - 验证 fallback 机制（当 `avatarUrl` 为 null 时显示首字母）。
+- 完整数据流测试：
+  - Launch 页面 → Processing 页面（实时日志流）→ Dashboard 页面（真实数据显示）。
+  - 所有组件（ProfileHeader、MomentumIndicator、TopRepos、Charts）均使用真实 API 数据。
+
+### Technical Details
+- **头像 URL 格式**：`https://avatars.githubusercontent.com/u/{user_id}?u={hash}&v=4`
+- **数据流**：GitHub GraphQL API → `user_info.json` → `profile.json` → Frontend API → React Component
+- **兼容性**：旧版本扫描的数据（没有 `avatarUrl` 字段）会自动使用 fallback 显示首字母占位符。
+
+
 ## 0.1.2
 
 > 当前版本（pround=0, normal=1, shame=2）。

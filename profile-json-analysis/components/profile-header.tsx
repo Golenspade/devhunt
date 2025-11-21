@@ -8,15 +8,24 @@ interface ProfileHeaderProps {
   followers: number
   following: number
   tags: string[]
+  avatarUrl?: string | null
 }
 
-export function ProfileHeader({ login, bio, company, location, followers, following, tags }: ProfileHeaderProps) {
+export function ProfileHeader({ login, bio, company, location, followers, following, tags, avatarUrl }: ProfileHeaderProps) {
   return (
     <div className="border-b border-border/50 pb-8 mb-8">
       <div className="flex items-start gap-6">
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center">
-          <span className="text-3xl font-bold text-primary">{login[0].toUpperCase()}</span>
-        </div>
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={`${login}'s avatar`}
+            className="w-24 h-24 rounded-full border border-primary/20"
+          />
+        ) : (
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center">
+            <span className="text-3xl font-bold text-primary">{login[0].toUpperCase()}</span>
+          </div>
+        )}
 
         <div className="flex-1">
           <h1 className="text-3xl font-bold text-foreground mb-2">{login}</h1>

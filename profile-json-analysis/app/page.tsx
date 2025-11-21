@@ -70,6 +70,7 @@ export default function Home() {
           bio: data.profile.bio ?? "",
           company: data.profile.company,
           location: data.profile.location,
+          avatarUrl: data.profile.avatarUrl,
           followers: data.profile.followers,
           following: data.profile.following,
           tags: data.profile.tags,
@@ -214,6 +215,7 @@ export default function Home() {
               followers={profile.followers}
               following={profile.following}
               tags={profile.tags}
+              avatarUrl={profile.avatarUrl}
             />
           </div>
           <MomentumIndicator status={profile.momentum} velocity={profile.velocity} />

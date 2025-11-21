@@ -70,6 +70,7 @@ export interface ProfileJSON {
   location: string | null;
   websiteUrl: string | null;
   twitterUsername: string | null;
+  avatarUrl: string | null;
   followers: number;
   following: number;
   organizations: {
