@@ -5,7 +5,7 @@ import type React from "react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
-import { User, Key, ChevronDown, ArrowRight } from "lucide-react"
+import { User, Key, ChevronDown, ArrowRight, Bot, Link } from "lucide-react"
 
 export default function LaunchPage() {
   const router = useRouter()
@@ -15,7 +15,12 @@ export default function LaunchPage() {
     timezone: "Asia/Shanghai",
     window: "year",
     deepScan: true,
+    // AI 配置
+    aiApiKey: "",
+    aiBaseUrl: "",
+    aiModel: "gpt-4o-mini",
   })
+  const [showAiConfig, setShowAiConfig] = useState(false)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -143,6 +148,87 @@ export default function LaunchPage() {
                   </button>
                 </div>
               </div>
+
+              {/* AI Configuration Toggle */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAiConfig(!showAiConfig)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 bg-secondary/50 border border-border/50 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:border-border transition-all"
+                >
+                  <span className="flex items-center gap-2">
+                    <Bot className="w-3.5 h-3.5" />
+                    AI Narrative Configuration
+                  </span>
+                  <ChevronDown className={`w-3 h-3 transition-transform ${showAiConfig ? 'rotate-180' : ''}`} />
+                </button>
+              </div>
+
+              {/* AI Configuration Panel */}
+              {showAiConfig && (
+                <div className="space-y-4 p-4 bg-secondary/30 border border-border/50 rounded-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                  <p className="text-[10px] text-muted-foreground">
+                    Configure your LLM API to enable AI-powered profile narrative generation.
+                  </p>
+                  
+                  {/* AI Base URL */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1 flex justify-between">
+                      API Base URL
+                      <span className="text-[10px] text-muted-foreground/60 normal-case">(Optional)</span>
+                    </label>
+                    <div className="input-group flex items-center bg-secondary border border-border rounded-lg px-3 transition-all duration-200 focus-within:border-accent focus-within:shadow-[0_0_0_2px_rgba(217,119,87,0.2)]">
+                      <Link className="w-4 h-4 text-muted-foreground transition-colors" />
+                      <input
+                        type="text"
+                        value={form.aiBaseUrl}
+                        onChange={(e) => setForm({ ...form, aiBaseUrl: e.target.value })}
+                        placeholder="https://api.openai.com/v1"
+                        className="w-full bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/40 py-2.5 pl-3 text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* AI API Key */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1">
+                      API Key
+                    </label>
+                    <div className="input-group flex items-center bg-secondary border border-border rounded-lg px-3 transition-all duration-200 focus-within:border-accent focus-within:shadow-[0_0_0_2px_rgba(217,119,87,0.2)]">
+                      <Key className="w-4 h-4 text-muted-foreground transition-colors" />
+                      <input
+                        type="password"
+                        value={form.aiApiKey}
+                        onChange={(e) => setForm({ ...form, aiApiKey: e.target.value })}
+                        placeholder="sk-..."
+                        className="w-full bg-transparent border-none focus:ring-0 text-foreground placeholder:text-muted-foreground/40 py-2.5 pl-3 text-sm outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* AI Model Select */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-muted-foreground uppercase ml-1">Model</label>
+                    <div className="relative">
+                      <select
+                        value={form.aiModel}
+                        onChange={(e) => setForm({ ...form, aiModel: e.target.value })}
+                        className="w-full bg-secondary border border-border rounded-lg text-xs text-foreground py-2.5 pl-3 pr-8 appearance-none focus:border-accent focus:ring-0 transition-colors outline-none"
+                      >
+                        <option value="gpt-4o-mini">GPT-4o Mini</option>
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                        <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                        <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
+                        <option value="deepseek-chat">DeepSeek Chat</option>
+                        <option value="qwen-turbo">Qwen Turbo</option>
+                      </select>
+                      <ChevronDown className="w-3 h-3 absolute right-3 top-3 text-muted-foreground pointer-events-none" />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Submit Button */}
               <button

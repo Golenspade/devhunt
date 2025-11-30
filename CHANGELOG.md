@@ -2,6 +2,78 @@
 
 _版本号规则：pround.normal.shame（对应 major.minor.patch，分别代表「大版本」「普通功能版本」「羞耻补丁」）。_
 
+## 0.1.4
+
+> 当前版本（pround=0, normal=1, shame=4）。
+
+### Added
+- **AI 导读功能（AI Narrative）**：
+  - 新增 `src/agent/` 模块，基于已分析的 `profile.json` 数据调用 LLM 生成自然语言导读。
+  - `src/agent/index.ts` - 核心 API：`compressProfileForAI()`、`buildSystemPrompt()`、`buildUserPrompt()`、`narrateProfile()`。
+  - `src/agent/cli.ts` - CLI 适配器：`narrateUser()` 函数处理命令行调用。
+  - 支持多种 LLM 提供商：OpenAI、Claude、DeepSeek、Qwen、Ollama（任何 OpenAI 兼容 API）。
+  - 支持语言选项（`--lang zh|en`）和风格选项（`--style professional|casual|brief`）。
+- **CLI narrate 命令**：
+  - 新增 `bun devhunt narrate <login>` 命令，生成开发者画像的 AI 导读。
+  - 用法：`bun devhunt narrate <login> [--lang zh|en] [--style professional|casual|brief]`
+  - 若未配置 API Key，会输出可复制的 System Prompt 和 User Prompt 供手动使用。
+- **前端 AI Narrative 组件**：
+  - 新增 `profile-json-analysis/components/ai-narrative.tsx` - Dashboard 中的 AI 导读卡片。
+  - 支持在组件内配置 API Base URL、API Key、Model、Language、Style。
+  - 支持生成、复制、重新生成导读。
+- **前端 AI 导读 API**：
+  - 新增 `profile-json-analysis/app/api/narrate/route.ts` - POST 端点处理导读请求。
+  - 支持用户自定义 AI 配置（优先级：请求参数 > 环境变量）。
+  - 无 API Key 时返回 prompts 供客户端手动使用。
+- **一键启动脚本**：
+  - 新增 `start.sh` - 完整启动（安装依赖 + 启动服务 + 打开浏览器）。
+  - 新增 `dev.sh` - 快速启动（跳过依赖安装）。
+  - 新增 `build.sh` - 构建生产版本。
+  - 所有脚本支持 macOS / Linux / Windows (Git Bash)。
+- **开源项目规范文件**：
+  - 新增 `LICENSE` - MIT 开源许可证。
+  - 新增 `CODE_OF_CONDUCT.md` - 行为准则（Do No Harm 原则）。
+
+### Changed
+- **CLI 参数解析**：
+  - `src/cli.ts` - 新增 `--lang` 和 `--style` 参数支持。
+  - `bin/devhunt.ts` - 新增 `narrate` 子命令路由。
+- **package.json 脚本更新**：
+  - 新增 `start` / `dev` / `build` 脚本，调用对应的 shell 脚本。
+  - 新增 `narrate` 脚本：`bun ./bin/devhunt.ts narrate`。
+  - 新增 `frontend` / `frontend:build` / `frontend:start` 脚本。
+- **README.md 全面更新**：
+  - 添加 ASCII Art Banner 和徽章。
+  - 添加功能特性、快速开始、CLI 命令说明。
+  - 添加 AI 配置说明（支持的 LLM 提供商表格）。
+  - 添加项目结构树、画像指标说明、开发命令。
+  - 添加行为准则和 License 链接。
+
+### Technical Details
+- **AI 数据压缩**：`compressProfileForAI()` 将完整的 ProfileJSON 压缩为 AI 友好的精简格式，包含：
+  - 基本信息（login、bio、company、location、followers、organizations）
+  - 标签（tags）
+  - Top 5 技能（skills）
+  - 关键指标（UOI、外部 PR 合并率、熬夜率、专注率、Uni Index）
+  - Grit Factor、Fork Destiny、Community Engagement、Contribution Momentum
+- **Prompt 工程**：
+  - System Prompt 定义 AI 角色为「开发者画像分析师」，根据语言和风格参数调整输出。
+  - User Prompt 包含压缩后的画像数据，指导 AI 生成结构化导读。
+- **脚本特性**：
+  - 彩色终端输出（ANSI 颜色码）
+  - ASCII Art Banner（DEVHUNT）
+  - 自动检测并安装 pnpm（如未安装）
+  - 自动打开浏览器（跨平台支持）
+
+### Tests
+- AI 导读功能手动验证：
+  - 使用真实用户数据测试 prompt 生成。
+  - 验证前端组件 API 配置和导读生成流程。
+- 一键启动脚本验证：
+  - macOS 上测试 `start.sh`、`dev.sh`、`build.sh` 执行正常。
+  - 验证浏览器自动打开功能。
+
+
 ## 0.1.3
 
 > 当前版本（pround=0, normal=1, shame=3）。

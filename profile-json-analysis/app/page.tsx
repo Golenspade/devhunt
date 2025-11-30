@@ -12,6 +12,7 @@ import { MomentumIndicator } from "@/components/momentum-indicator"
 import { ContributionCalendar } from "@/components/contribution-calendar"
 import { LanguageProficiencyChart } from "@/components/language-proficiency-chart"
 import { PRByHourChart } from "@/components/pr-by-hour-chart"
+import { AINarrative } from "@/components/ai-narrative"
 import type { ApiResponse, DashboardProfile } from "@/types/profile"
 
 // TopRepos 组件期望的数据格式
@@ -313,6 +314,10 @@ export default function Home() {
 
         <div className="mb-6">
           <TopRepos repos={topRepos} />
+        </div>
+
+        <div className="mb-6">
+          <AINarrative login={profile.login} />
         </div>
 
         <IntelligenceFooter

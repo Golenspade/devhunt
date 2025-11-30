@@ -52,6 +52,22 @@ export interface CLIOptions {
    * 命令行参数：--yes 或 -y
    */
   yes?: boolean;
+
+  /**
+   * AI 导读语言
+   *
+   * 用于 narrate 命令，指定导读输出的语言。
+   * 可选值：zh（中文）、en（英文）
+   */
+  lang?: "zh" | "en";
+
+  /**
+   * AI 导读风格
+   *
+   * 用于 narrate 命令，指定导读的风格。
+   * 可选值：professional（专业）、casual（轻松）、brief（简短）
+   */
+  style?: "professional" | "casual" | "brief";
 }
 
 /**
@@ -89,6 +105,10 @@ export function parseArgs(
       options.window = rest[++i];
     } else if (arg === "--yes" || arg === "-y") {
       options.yes = true;
+    } else if (arg === "--lang") {
+      options.lang = rest[++i] as "zh" | "en";
+    } else if (arg === "--style") {
+      options.style = rest[++i] as "professional" | "casual" | "brief";
     }
   }
 

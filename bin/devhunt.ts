@@ -9,9 +9,12 @@ function printUsage() {
   console.log(`Usage:
   bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all] [--yes|-y]
   bun devhunt report <login> [--tz Asia/Shanghai]
+  bun devhunt narrate <login> [--lang zh|en] [--style professional|casual|brief]
 
 Options:
   --yes, -y    跳过用户确认，直接开始扫描（适用于批量扫描或 CI 环境）
+  --lang       导读语言（默认 zh）
+  --style      导读风格：professional（专业）、casual（轻松）、brief（简短）
 `);
 }
 
@@ -43,6 +46,22 @@ async function main() {
           throw err;
         }
         throw new AnalysisError(`Failed to generate report: ${(err as Error).message}`, err);
+      }
+      break;
+    }
+    case "narrate": {
+      try {
+        const { narrateUser } = await import("../src/agent/cli");
+        await narrateUser({
+          login,
+          language: options.lang ?? "zh",
+          style: options.style ?? "professional",
+        });
+      } catch (err) {
+        if (err instanceof DevhuntError) {
+          throw err;
+        }
+        throw new AnalysisError(`Failed to generate narrative: ${(err as Error).message}`, err);
       }
       break;
     }
