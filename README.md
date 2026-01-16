@@ -15,7 +15,7 @@
 
 GitHub 开发者画像分析工具 —— 基于 Bun + TypeScript + Next.js
 
-[![Version](https://img.shields.io/badge/version-0.1.4-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-0.1.3-blue.svg)](./package.json)
 [![Bun](https://img.shields.io/badge/runtime-Bun-f9f1e1.svg)](https://bun.sh)
 [![Next.js](https://img.shields.io/badge/frontend-Next.js%2016-black.svg)](https://nextjs.org)
 
