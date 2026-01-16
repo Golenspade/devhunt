@@ -17,6 +17,9 @@ NC='\033[0m' # No Color
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/profile-json-analysis"
 
+# 全局变量
+FRONTEND_PID=""
+
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════════════════╗"
 echo "║                                                                          ║"

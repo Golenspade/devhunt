@@ -11,7 +11,6 @@ import {
   narrateWithOpenAI,
   buildSystemPrompt,
   buildUserPrompt,
-  compressProfileForAI,
   type NarrateOptions,
 } from "./index";
 
