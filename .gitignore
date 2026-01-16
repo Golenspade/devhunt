@@ -3,4 +3,6 @@ out/
 .DS_Store
 .next/
 .env
+.cursor/
+.serena/
 

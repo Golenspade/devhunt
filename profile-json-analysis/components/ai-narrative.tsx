@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Bot, Sparkles, Loader2, Copy, Check, ChevronDown, Key, Link } from "lucide-react"
 
 interface AINarrativeProps {
@@ -24,7 +24,7 @@ export function AINarrative({ login }: AINarrativeProps) {
   })
 
   // 从 sessionStorage 获取配置（如果有）
-  useState(() => {
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const configStr = sessionStorage.getItem("devhunt-config")
       if (configStr) {
@@ -39,7 +39,7 @@ export function AINarrative({ login }: AINarrativeProps) {
         }
       }
     }
-  })
+  }, [])
 
   const generateNarrative = async () => {
     if (!aiConfig.apiKey && !aiConfig.baseUrl) {

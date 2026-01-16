@@ -164,8 +164,8 @@ function validateTimezone(tz: string): void {
   }
 
   // 验证 IANA 时区格式（如 Asia/Shanghai, America/New_York）或偏移量格式（如 +08:00）
-  // IANA 时区格式：Continent/City 或 Region/City，可能包含下划线和连字符
-  const ianaPattern = /^[A-Za-z_]+\/[A-Za-z_]+(\/[A-Za-z_]+)?$/;
+  // IANA 时区格式：Continent/Region，可能包含下划线、连字符和数字
+  const ianaPattern = /^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)?$/;
   const offsetPattern = /^[+-]\d{2}:\d{2}$/;
   
   // 如果包含 /，必须是有效的 IANA 格式
