@@ -9,13 +9,14 @@
 命令入口：
 
 ```bash
-bun devhunt <command> [...args]
+bun ./bin/devhunt.ts <command> [...args]
 ```
 
-当前支持两个子命令：
+当前支持三个子命令：
 
 - `scan`  —— 扫描指定 GitHub 用户，拉取原始数据（repos / PRs / commits）
 - `report` —— 基于已有原始数据生成画像报告和图表
+- `narrate` —— 读取报告并生成提示词，配置 provider 后才调用模型
 
 所有输出默认写到项目根目录下的 `out/<login>/` 目录。
 
@@ -26,7 +27,7 @@ bun devhunt <command> [...args]
 **用法：**
 
 ```bash
-bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all] [--yes|-y]
+bun ./bin/devhunt.ts scan <login> [--window quarter|half|year|3y|all] [--yes|-y]
 ```
 
 ### 2.1 位置参数
@@ -48,7 +49,7 @@ bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|al
   3. 环境变量 `GH_TOKEN`
 - **建议：** 使用 Fine-grained Personal Access Token，只需要访问公开仓库的权限即可。
 
-若三者都未配置，`scan` 会因认证错误失败，并给出中文错误提示。
+若三者都未配置，底层 GitHub CLI 还可能使用已有的 `gh` 登录状态；无有效认证时扫描失败。避免将真实 token 直接写入命令参数或 shell 历史。
 
 #### 2.2.2 `--window <window>`
 
@@ -103,7 +104,7 @@ bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|al
 **用法：**
 
 ```bash
-bun devhunt report <login> [--tz Asia/Shanghai]
+bun ./bin/devhunt.ts report <login> [--tz Asia/Shanghai]
 ```
 
 ### 3.1 位置参数
@@ -111,7 +112,7 @@ bun devhunt report <login> [--tz Asia/Shanghai]
 - `<login>`
   - 必选。
   - 要生成报告的 GitHub 用户名。
-  - 需要在此之前已经执行过 `bun devhunt scan <login> ...`，保证 `out/<login>/raw/` 下有数据。
+  - 需要在此之前已经执行过 `bun ./bin/devhunt.ts scan <login> ...`，保证 `out/<login>/raw/` 下有数据。
 
 ### 3.2 选项参数
 
@@ -152,3 +153,11 @@ bun devhunt report <login> [--tz Asia/Shanghai]
 
 详细错误信息会打印在终端中，可用于进一步定位问题。
 
+
+## 5. `narrate` 子命令
+
+```bash
+OPENAI_API_KEY= bun ./bin/devhunt.ts narrate <login> --lang en --style brief
+```
+
+输入为 `out/<login>/profile.json`。显式空 `OPENAI_API_KEY` 使此命令生成 `narrate_prompt.txt`，不调用 provider。配置非空 key 后会进入模型调用流程，结果写入 `narrative.md`。实际 CLI 配置键为 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`；不能据此推断所有 provider 协议兼容。

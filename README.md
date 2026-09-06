@@ -29,7 +29,7 @@ GitHub 开发者画像分析工具 —— 基于 Bun + TypeScript + Next.js
 - 📊 **画像分析** - 生成多维度开发者画像 JSON 和可视化图表
 - 🤖 **AI 导读** - 基于 LLM 生成自然语言的开发者画像解读
 - 🎨 **可视化仪表盘** - 现代化的 Web UI 展示分析结果
-- ⚡ **一键启动** - 提供自动化脚本，快速部署和运行
+- 🧰 **命令行工作流** - 扫描、生成报告和导读分别执行
 
 ---
 
@@ -41,18 +41,19 @@ GitHub 开发者画像分析工具 —— 基于 Bun + TypeScript + Next.js
 - [pnpm](https://pnpm.io) >= 8.0
 - [GitHub Token](https://github.com/settings/tokens) (用于 API 访问)
 
-### 一键启动
+### 命令行启动（仓库根目录）
+
+本快照验证过 Bun 1.3.14。先安装依赖，再使用真实入口：
 
 ```bash
-# 完整启动（安装依赖 + 启动服务 + 打开浏览器）
-./start.sh
-
-# 快速启动（跳过依赖安装，适合已安装过的情况）
-./dev.sh
-
-# 构建生产版本
-./build.sh
+bun install --frozen-lockfile
+bun ./bin/devhunt.ts report <login> --tz Asia/Shanghai
+OPENAI_API_KEY= bun ./bin/devhunt.ts narrate <login> --lang en --style brief
 ```
+
+`report` 需要本地已有的原始数据；全新 checkout 不包含任何真实用户结果。`scan` 还需要 GitHub CLI (`gh`) 和相应认证。`narrate` 在上述显式空 key 下仅输出提示词，不调用模型。不要把生成的提示词误认为模型回答。
+
+根目录的 `start.sh`、`dev.sh`、`build.sh` 已不在当前树中；指向它们的 package scripts 不是可用入口。下方前端命令属于独立流程，本轮 CLI 验证不代表前端部署验收。
 
 ### 手动启动
 
@@ -79,13 +80,13 @@ DevHunt 提供三个核心子命令：
 
 ```bash
 # 扫描用户数据
-bun devhunt scan <login> --token $GITHUB_TOKEN [--window quarter|half|year|3y|all] [--yes]
+bun ./bin/devhunt.ts scan <login> [--window quarter|half|year|3y|all] [--yes]
 
 # 生成画像报告
-bun devhunt report <login> [--tz Asia/Shanghai]
+bun ./bin/devhunt.ts report <login> [--tz Asia/Shanghai]
 
 # AI 导读（生成自然语言解读）
-bun devhunt narrate <login> [--lang zh|en] [--style professional|casual|brief]
+bun ./bin/devhunt.ts narrate <login> [--lang zh|en] [--style professional|casual|brief]
 ```
 
 | 命令 | 说明 | 输出 |
@@ -147,10 +148,7 @@ devhunt/
 │       ├── ai-narrative.tsx
 │       ├── contribution-calendar.tsx
 │       └── ...
-├── out/                    # 输出目录（扫描和分析结果）
-├── start.sh                # 一键启动脚本
-├── dev.sh                  # 快速启动脚本
-└── build.sh                # 构建脚本
+└── out/                    # 本地生成的输出目录，不随源码分发
 ```
 
 ---
@@ -204,3 +202,7 @@ cd profile-json-analysis && pnpm lint
 
 [MIT](./LICENSE) © 2024 Golenspade
 
+
+## 本地结果与留存
+
+原始数据、画像、提示词和导读均需由运行者自行管理。参见 [数据留存说明](./docs/data-retention.md)。
