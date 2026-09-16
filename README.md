@@ -1,6 +1,6 @@
 # DevHunt
 
-[文档中心](https://fankex.com/docs)
+[使用文档](https://fankex.com/zh-cn/docs/devhunt)
 
 <div align="center">
 
