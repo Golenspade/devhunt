@@ -1,5 +1,7 @@
 # DevHunt
 
+[文档中心](https://fankex.com/docs)
+
 <div align="center">
 
 ```
