@@ -14,6 +14,10 @@
  */
 
 import type { RepoRecord, PRRecord, UserInfo, CommitRecord } from "./types/github";
+import { resolveTimezone } from "./timezone";
+import type { TimezoneInput } from "./timezone";
+export { resolveTimezone };
+export type { TimezoneInput, TimezoneTarget } from "./timezone";
 import type {
   ProfileReadmeStyle,
   ProfileReadmeAnalysis,
@@ -241,7 +245,7 @@ export function computeTopicWeights(
  * 4. 在对应的桶中计数
  *
  * @param prs - PR 列表
- * @param tzOffsetMinutes - 时区偏移量（分钟，如 +08:00 = 480）
+ * @param timezone - 已解析的时区目标，或兼容旧调用的数字分钟偏移量
  * @returns 长度为 24 的数组，索引 i 表示 i:00 的 PR 数量
  *
  * @example
@@ -258,10 +262,10 @@ export function computeTopicWeights(
  * 设计理念：
  * - 使用 PR.createdAt 近似活跃时间（MVP 版本，参考 mvp.md）
  * - 后续可改用 commit.authoredDate 获得更精确的时间分布
- * - 时区偏移量支持手动覆盖（--tz 参数）
+ * - 按每个 PR 的创建时间应用所选时区的规则
  */
-export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number): (number | null)[] {
-  return _computeHoursHistogram(prs, tzOffsetMinutes);
+export function computeHoursHistogram(prs: PRRecord[], timezone: TimezoneInput): (number | null)[] {
+  return _computeHoursHistogram(prs, timezone);
 }
 
 /**
@@ -301,19 +305,19 @@ export function computeCoreHours(hist: (number | null)[]): { start: string; end:
  *
  * - 仅使用 commit.authoredAt 作为“写代码时间”的代理；
  * - 排除 merge commit（isMerge=true），避免一键合并/CI 噪声；
- * - 使用与 PR hours 相同的 tzOffsetMinutes，将 UTC 时间转换为本地小时后判断是否属于夜间窗口。
+ * - 按每个 commit 的 authoredAt 应用与 PR hours 相同的时区规则。
  *
  * 夜间窗口 v0 约定为当地时间 [22:00, 04:00]，即小时桶 {22, 23, 0, 1, 2, 3, 4}。
  *
  * @param commits - Commit 列表（可选）。
- * @param tzOffsetMinutes - 时区偏移量（分钟）。
+ * @param timezone - 已解析的时区目标，或兼容旧调用的数字分钟偏移量。
  * @returns { value, sample_size }，若 sample_size=0，则 value 为 null。
  */
 export function computeNightRatio(
   commits: CommitRecord[] | undefined,
-  tzOffsetMinutes: number
+  timezone: TimezoneInput
 ): { value: number | null; sample_size: number } {
-  return _computeNightRatio(commits, tzOffsetMinutes);
+  return _computeNightRatio(commits, timezone);
 }
 
 /**
@@ -436,9 +440,10 @@ export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
 /**
  * 解析时区偏移量
  *
- * 将时区字符串（如 "+08:00" 或 "Asia/Shanghai"）转换为分钟偏移量。
+ * 返回指定时间点的分钟偏移量快照。IANA 时区会随日期变化，不能将此结果用于整段事件序列。
  *
  * @param tz - 时区字符串（可选）
+ * @param at - UTC 时间点（默认当前时间）
  * @returns 时区偏移量（分钟），如 +08:00 = 480，-05:00 = -300
  *
  * @example
@@ -447,16 +452,13 @@ export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
  * parseTimezoneOffset("-05:00")       // => -300
  * parseTimezoneOffset("Asia/Shanghai") // => 480
  * parseTimezoneOffset(null)           // => 0 (UTC)
- * parseTimezoneOffset("invalid")      // => 0 (fallback to UTC)
+ * parseTimezoneOffset("America/New_York", "2024-07-15T12:00:00Z") // => -240
  * ```
  *
- * 设计理念：
- * - 支持偏移量格式（如 "+08:00"）和 IANA 时区名称（如 "Asia/Shanghai"）
- * - MVP 版本只硬编码了常见时区，后续可扩展为完整的 IANA 数据库
- * - 无效输入时返回 0（UTC），避免抛出错误
+ * 无效时区或时间戳会抛错。省略时间点时使用当前时间。
  */
-export function parseTimezoneOffset(tz?: string | null): number {
-  return _parseTimezoneOffset(tz);
+export function parseTimezoneOffset(tz?: string | null, at?: string): number {
+  return _parseTimezoneOffset(tz, at);
 }
 
 /**
@@ -465,7 +467,7 @@ export function parseTimezoneOffset(tz?: string | null): number {
  * 生成 profile.json 中的 timezone 字段。
  *
  * @param tzOverride - 用户指定的时区覆盖参数
- * @param tzOffsetMinutes - 解析后的时区偏移量（分钟）
+ * @param timezone - 已解析的时区目标，或兼容旧调用的数字分钟偏移量
  * @returns 包含 auto/override/used 三个字段的时区对象
  *
  * @example
@@ -481,14 +483,14 @@ export function parseTimezoneOffset(tz?: string | null): number {
  * 设计理念：
  * - auto: 自动推断的时区（MVP 版本暂未实现，固定为 UTC）
  * - override: 用户通过 --tz 参数指定的时区
- * - used: 实际使用的时区（如果有 override 则使用 override，否则使用 auto）
+ * - used: 标准化的时区标识（传入目标时），或旧式数字偏移量
  * - 后续可扩展 auto 字段，从 commit 的 tzOffset 推断（参考 pod.md）
  */
 export function buildTimezone(
   tzOverride: string | null | undefined,
-  tzOffsetMinutes: number
+  timezone: TimezoneInput
 ): { auto: string | null; override: string | null; used: string | null } {
-  return _buildTimezone(tzOverride, tzOffsetMinutes);
+  return _buildTimezone(tzOverride, timezone);
 }
 
 /**
@@ -603,4 +605,3 @@ export function computeReadmeConsistency(
 ): ConsistencySignals {
   return _computeReadmeConsistency(readme, skills, login, repos);
 }
-

@@ -1,4 +1,6 @@
 import type { RepoRecord, PRRecord, CommitRecord, ContributionsSummary } from "../types/github";
+import { localHourAt, offsetMinutesAt, resolveTimezone } from "../timezone";
+import type { TimezoneInput } from "../timezone";
 
 /**
  * 计算语言权重（Skills 指标）
@@ -263,18 +265,14 @@ export function computeGritFactor(
  *
  * 基于 PR 的创建时间，统计每个小时的活跃度。
  */
-export function computeHoursHistogram(prs: PRRecord[], tzOffsetMinutes: number): (number | null)[] {
+export function computeHoursHistogram(prs: PRRecord[], timezone: TimezoneInput): (number | null)[] {
   // 使用 (number | null) 保留“未观测到”的信息，调用方可以按需区分 0 和 null
   const buckets: (number | null)[] = new Array(24).fill(null);
+  const target = typeof timezone === "number" ? resolveTimezone(timezone) : timezone;
 
   for (const pr of prs) {
-    const dt = new Date(pr.createdAt);
-    if (Number.isNaN(dt.getTime())) continue;
-
-    // 转换为本地时间
-    const utcHours = dt.getUTCHours();
-    const localHours = (utcHours + tzOffsetMinutes / 60 + 24 * 3) % 24; // +24*3 防止负数
-    const idx = Math.floor(localHours) % 24;
+    const idx = localHourAt(pr.createdAt, target);
+    if (idx === null) continue;
     // 理论上 buckets 长度恒为 24，但为防御性编程与 TypeScript 提示，使用 ?? 兜底
     const prev = buckets[idx] ?? 0;
     buckets[idx] = prev + 1;
@@ -320,15 +318,16 @@ export function computeCoreHours(hist: (number | null)[]): { start: string; end:
  *
  * - 仅使用 commit.authoredAt 作为“写代码时间”的代理；
  * - 排除 merge commit（isMerge=true），避免一键合并/CI 噪声；
- * - 先转成本地小时（与 PR hours 使用同一 tzOffsetMinutes），再判断是否落在夜间窗口。
+ * - 按每个 authoredAt 的时间点转换为本地小时，再判断是否落在夜间窗口。
  *
  * 夜间窗口 v0 约定为当地时间 [22:00, 04:00]，即小时桶 {22, 23, 0, 1, 2, 3, 4}。
  */
 export function computeNightRatio(
   commits: CommitRecord[] | undefined,
-  tzOffsetMinutes: number
+  timezone: TimezoneInput
 ): { value: number | null; sample_size: number } {
   const list = commits ?? [];
+  const target = typeof timezone === "number" ? resolveTimezone(timezone) : timezone;
 
   let night = 0;
   let total = 0;
@@ -337,14 +336,10 @@ export function computeNightRatio(
     // 排除 merge commit
     if (c.isMerge) continue;
 
-    const dt = new Date(c.authoredAt);
-    if (Number.isNaN(dt.getTime())) continue;
+    const hour = localHourAt(c.authoredAt, target);
+    if (hour === null) continue;
 
     total++;
-
-    const utcHours = dt.getUTCHours();
-    const localHours = (utcHours + tzOffsetMinutes / 60 + 24 * 3) % 24;
-    const hour = Math.floor(localHours) % 24;
 
     // 夜间小时集合：22, 23, 0, 1, 2, 3, 4
     if (hour === 22 || hour === 23 || hour === 0 || hour === 1 || hour === 2 || hour === 3 || hour === 4) {
@@ -808,9 +803,10 @@ export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
 /**
  * 解析时区偏移量
  *
- * 将时区字符串（如 "+08:00" 或 "Asia/Shanghai"）转换为分钟偏移量。
+ * 获取指定时间点的偏移量快照；IANA 时区的偏移量会随日期变化。
  *
  * @param tz - 时区字符串（可选）
+ * @param at - UTC 时间点（默认当前时间）
  * @returns 时区偏移量（分钟），如 +08:00 = 480，-05:00 = -300
  *
  * @example
@@ -819,33 +815,15 @@ export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
  * parseTimezoneOffset("-05:00")       // => -300
  * parseTimezoneOffset("Asia/Shanghai") // => 480
  * parseTimezoneOffset(null)           // => 0 (UTC)
- * parseTimezoneOffset("invalid")      // => 0 (fallback to UTC)
+ * parseTimezoneOffset("America/New_York", "2024-07-15T12:00:00Z") // => -240
  * ```
  *
- * 设计理念：
- * - 支持偏移量格式（如 "+08:00"）和 IANA 时区名称（如 "Asia/Shanghai"）
- * - MVP 版本只硬编码了常见时区，后续可扩展为完整的 IANA 数据库
- * - 无效输入时返回 0（UTC），避免抛出错误
+ * 无效时区或时间戳会抛错；逐事件计算请使用时区目标，不要复用此快照。
  */
-export function parseTimezoneOffset(tz?: string | null): number {
-  if (!tz) return 0; // 默认 UTC
-
-  // 尝试解析偏移量格式（如 "+08:00"）
-  const offsetMatch = tz.match(/^([+-])(\d{2}):(\d{2})$/);
-  if (offsetMatch) {
-    const sign = offsetMatch[1] === "-" ? -1 : 1;
-    const hours = Number(offsetMatch[2]);
-    const minutes = Number(offsetMatch[3]);
-    return sign * (hours * 60 + minutes);
-  }
-
-  // 硬编码的 IANA 时区名称（MVP 版本）
-  if (tz === "Asia/Shanghai") {
-    return 8 * 60;
-  }
-
-  // 无法识别的时区，fallback 到 UTC
-  return 0;
+export function parseTimezoneOffset(tz?: string | null, at: string = new Date().toISOString()): number {
+  const offset = offsetMinutesAt(at, resolveTimezone(tz));
+  if (offset === null) throw new RangeError(`Invalid timestamp: ${at}`);
+  return offset;
 }
 
 /**
@@ -854,16 +832,17 @@ export function parseTimezoneOffset(tz?: string | null): number {
  * 生成 profile.json 中的 timezone 字段。
  *
  * @param tzOverride - 用户指定的时区覆盖参数
- * @param tzOffsetMinutes - 解析后的时区偏移量（分钟）
+ * @param timezone - 已解析的时区目标，或兼容旧调用的数字分钟偏移量
  * @returns 包含 auto/override/used 三个字段的时区对象
  */
 export function buildTimezone(
   tzOverride: string | null | undefined,
-  tzOffsetMinutes: number
+  timezone: TimezoneInput
 ): { auto: string | null; override: string | null; used: string | null } {
   const override = tzOverride ?? null;
-  const usedOffset = override ? tzOffsetMinutes : 0;
-  const usedStr = formatOffset(usedOffset);
+  const usedStr = override === null
+    ? "+00:00"
+    : typeof timezone === "number" ? formatOffset(timezone) : timezone.id;
 
   return {
     auto: "+00:00", // MVP 版本暂未实现自动推断，固定为 UTC

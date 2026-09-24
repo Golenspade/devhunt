@@ -12,6 +12,7 @@ import {
   computeExternalPrAcceptRate,
   computeTopRepos,
   parseTimezoneOffset,
+  resolveTimezone,
   buildTimezone,
   buildSummaryEvidence,
   analyzeProfileReadme,
@@ -137,6 +138,19 @@ describe("analyze core metrics", () => {
     expect(night.value!).toBeCloseTo(2 / 3, 5); // 2 个夜间 / 3 个非 merge commit
   });
 
+  it("uses each authoredAt instant for New York night classification and excludes merges", () => {
+    const commits = [
+      makeCommit("2024-01-15T09:00:00Z", { committedAt: "2024-01-15T18:00:00Z" }),
+      makeCommit("2024-07-15T09:00:00Z", { committedAt: "2024-07-15T04:00:00Z" }),
+      makeCommit("2024-01-16T09:00:00Z", { isMerge: true })
+    ];
+    expect(computeNightRatio(commits, resolveTimezone("America/New_York"))).toEqual({
+      value: 0.5,
+      sample_size: 2
+    });
+    expect(computeNightRatio(commits, -5 * 60)).toEqual({ value: 1, sample_size: 2 });
+  });
+
   it("bins PRs into hours and derives core hours", () => {
     const prs: PRRecord[] = [
       makePr("2024-01-01T10:15:00Z", "self"),
@@ -153,6 +167,19 @@ describe("analyze core metrics", () => {
     const core = computeCoreHours(hist);
     expect(core.length).toBe(2);
     expect(core[0]).toEqual({ start: "09:00", end: "10:00" });
+  });
+
+  it("bins PRs on both sides of New York spring DST by their createdAt instant", () => {
+    const prs = [
+      makePr("2024-03-10T06:59:00Z", "self"),
+      makePr("2024-03-10T07:00:00Z", "self")
+    ];
+    const hist = computeHoursHistogram(prs, resolveTimezone("America/New_York"));
+    expect(hist[1]).toBe(1);
+    expect(hist[2]).toBeNull();
+    expect(hist[3]).toBe(1);
+    expect(hist.reduce<number>((sum, count) => sum + (count ?? 0), 0)).toBe(2);
+    expect(computeHoursHistogram(prs, -5 * 60)[2]).toBe(1);
   });
 
   it("computes UOI and external PR accept rate", () => {
@@ -207,9 +234,16 @@ describe("analyze core metrics", () => {
     expect(parseTimezoneOffset("+09:30")).toBe(9 * 60 + 30);
     expect(parseTimezoneOffset("-05:00")).toBe(-5 * 60);
     expect(parseTimezoneOffset(undefined)).toBe(0);
+    expect(parseTimezoneOffset("America/New_York", "2024-01-15T12:00:00Z")).toBe(-300);
+    expect(parseTimezoneOffset("America/New_York", "2024-07-15T12:00:00Z")).toBe(-240);
+    expect(() => parseTimezoneOffset("Mars/Olympus")).toThrow();
+    expect(() => parseTimezoneOffset("+14:30")).toThrow();
 
     const tz = buildTimezone("Asia/Shanghai", 8 * 60);
     expect(tz).toEqual({ auto: "+00:00", override: "Asia/Shanghai", used: "+08:00" });
+    expect(buildTimezone("America/New_York", resolveTimezone("America/New_York"))).toEqual({
+      auto: "+00:00", override: "America/New_York", used: "America/New_York"
+    });
   });
 
   it("computes top repos and summary evidence and integrates in analyzeAll", () => {
