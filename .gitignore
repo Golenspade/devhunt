@@ -5,4 +5,5 @@ out/
 .env
 .cursor/
 .serena/
-
+.worktrees/
+.superpowers/

@@ -2,7 +2,7 @@
 
 Date: 2026-09-25
 
-Status: Approved in conversation; awaiting review of this written specification.
+Status: Approved by the user on 2026-09-25.
 
 ## Problem
 
