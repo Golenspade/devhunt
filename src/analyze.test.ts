@@ -246,6 +246,30 @@ describe("analyze core metrics", () => {
     });
   });
 
+  it.each([
+    { label: "absent override", override: undefined, used: "+00:00", hours: [[9, 2]], night: 0 },
+    { label: "GMT alias", override: "gMt", used: "UTC", hours: [[9, 2]], night: 0 },
+    { label: "UTC alias", override: "uTc", used: "UTC", hours: [[9, 2]], night: 0 },
+    { label: "fixed offset", override: "-05:00", used: "-05:00", hours: [[4, 2]], night: 1 },
+    { label: "IANA zone", override: "America/New_York", used: "America/New_York", hours: [[4, 1], [5, 1]], night: 0.5 },
+    { label: "IANA normalized name", override: "america/new_york", used: "America/New_York", hours: [[4, 1], [5, 1]], night: 0.5 }
+  ] as const)("analyzeAll applies $label to both activity metrics and timezone metadata", ({ override, used, hours, night }) => {
+    const instants = ["2024-01-15T09:00:00Z", "2024-07-15T09:00:00Z"];
+    const result = analyzeAll({
+      login: "self",
+      repos: [],
+      prs: instants.map((instant) => makePr(instant, "self")),
+      commits: instants.map((instant) => makeCommit(instant)),
+      tzOverride: override
+    });
+
+    expect(result.profile.timezone).toEqual({ auto: "+00:00", override: override ?? null, used });
+    expect(result.hoursHistogram.reduce((sum, count) => sum + (count ?? 0), 0)).toBe(2);
+    for (const [hour, count] of hours) expect(result.hoursHistogram[hour]).toBe(count);
+    expect(result.profile.night_ratio).toBe(night);
+    expect(result.profile.night_ratio_sample_size).toBe(2);
+  });
+
   it("computes top repos and summary evidence and integrates in analyzeAll", () => {
     const repos: RepoRecord[] = [
       makeRepo("self", "a", 50, "2024-01-10T00:00:00Z"),

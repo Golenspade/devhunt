@@ -12,12 +12,12 @@ import {
   computeForkDestiny,
   computeCommunityEngagement,
   computeContributionMomentum,
-  parseTimezoneOffset,
   buildTimezone,
   buildSummaryEvidence,
 } from "./metrics";
 import { analyzeProfileReadme, computeReadmeConsistency } from "./nlp";
 import { computeProfileTags } from "./tags";
+import { resolveTimezone } from "../timezone";
 
 /**
  * 执行完整的开发者画像分析（模块化版本）
@@ -27,13 +27,13 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
 
   // 计算各项指标
   const langWeights = computeLanguageWeights(repos);
-  const tzOffsetMinutes = parseTimezoneOffset(tzOverride);
-  const hoursHistogram = computeHoursHistogram(prs, tzOffsetMinutes);
+  const timezoneTarget = resolveTimezone(tzOverride);
+  const hoursHistogram = computeHoursHistogram(prs, timezoneTarget);
   const coreHours = computeCoreHours(hoursHistogram);
   const uoi = computeUoi(prs, login);
   const externalRate = computeExternalPrAcceptRate(prs, login);
   const uniIndex = computeUniIndexV0(prs, commits, login, userInfo, true);
-  const night = computeNightRatio(commits, tzOffsetMinutes);
+  const night = computeNightRatio(commits, timezoneTarget);
   const focus = computeFocusRatio(repos);
   const gritFactor = computeGritFactor(repos, login);
   const forkDestiny = computeForkDestiny(repos, commits, login);
@@ -41,7 +41,7 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
   const contributionMomentum = computeContributionMomentum(contributions ?? null);
   const tags = computeProfileTags(forkDestiny, communityEngagement);
 
-  const timezone = buildTimezone(tzOverride, tzOffsetMinutes);
+  const timezone = buildTimezone(tzOverride, timezoneTarget);
   const summary = buildSummaryEvidence(login, repos, prs);
   const readme = analyzeProfileReadme(profileReadmeMarkdown ?? null);
   const consistency = computeReadmeConsistency(readme, langWeights, login, repos);
@@ -139,4 +139,3 @@ export function analyzeAll(options: AnalyzeOptions): AnalysisResult {
     hoursHistogram
   };
 }
-

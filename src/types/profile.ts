@@ -83,7 +83,7 @@ export interface ProfileJSON {
   /** 标签系统（基于 Fork Destiny + Community Engagement 等指标推导出的 archetypes） */
   tags: string[];
 
-  /** 时区信息（自动推断 / 用户覆盖 / 实际使用） */
+  /** 时区信息：auto 当前未实现推断且为 +00:00；override 保留原始输入；used 是规范化的实际时区标识。 */
   timezone: { auto: string | null; override: string | null; used: string | null };
   /** 技能画像（语言 + 权重） */
   skills: { lang: string; weight: number }[];
@@ -253,4 +253,3 @@ export interface AnalyzeOptions {
   /** 用户基本信息（v0.0.10 新增） */
   userInfo?: UserInfo | null;
 }
-
