@@ -239,13 +239,13 @@ export function computeTopicWeights(
  * 基于 PR 的创建时间，统计每个小时的活跃度。
  *
  * 算法（参考 mvp.md）：
- * 1. 对每个 PR，提取 createdAt 时间戳
- * 2. 转换为本地时间（使用 tzOffsetMinutes）
+ * 1. 对每个 PR，提取 createdAt UTC 时间戳
+ * 2. 按该事件时刻的所选时区规则转换为本地时间
  * 3. 提取小时数（0-23）
  * 4. 在对应的桶中计数
  *
  * @param prs - PR 列表
- * @param timezone - 已解析的时区目标，或兼容旧调用的数字分钟偏移量
+ * @param timezone - 已解析的时区目标；数字分钟偏移量保留给固定偏移兼容调用
  * @returns 长度为 24 的数组，索引 i 表示 i:00 的 PR 数量
  *
  * @example
@@ -261,8 +261,7 @@ export function computeTopicWeights(
  *
  * 设计理念：
  * - 使用 PR.createdAt 近似活跃时间（MVP 版本，参考 mvp.md）
- * - 后续可改用 commit.authoredDate 获得更精确的时间分布
- * - 按每个 PR 的创建时间应用所选时区的规则
+ * - 使用 PR.createdAt 作为事件时刻，按所选时区在该时刻的规则独立转换
  */
 export function computeHoursHistogram(prs: PRRecord[], timezone: TimezoneInput): (number | null)[] {
   return _computeHoursHistogram(prs, timezone);
@@ -308,9 +307,10 @@ export function computeCoreHours(hist: (number | null)[]): { start: string; end:
  * - 按每个 commit 的 authoredAt 应用与 PR hours 相同的时区规则。
  *
  * 夜间窗口 v0 约定为当地时间 [22:00, 04:00]，即小时桶 {22, 23, 0, 1, 2, 3, 4}。
+ * 每个非 merge commit 使用其 authoredAt UTC 时刻，并按该时刻的时区规则转换。
  *
  * @param commits - Commit 列表（可选）。
- * @param timezone - 已解析的时区目标，或兼容旧调用的数字分钟偏移量。
+ * @param timezone - 已解析的时区目标；数字分钟偏移量保留给固定偏移兼容调用。
  * @returns { value, sample_size }，若 sample_size=0，则 value 为 null。
  */
 export function computeNightRatio(
@@ -440,7 +440,8 @@ export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
 /**
  * 解析时区偏移量
  *
- * 返回指定时间点的分钟偏移量快照。IANA 时区会随日期变化，不能将此结果用于整段事件序列。
+ * 返回指定时间点的分钟偏移量快照。数字固定偏移直接返回其分钟数；IANA 时区返回该时刻的偏移快照。
+ * IANA 时区可能随日期变化，因此此函数的单个快照不能用于转换整段事件序列；应将时区目标传给指标函数。
  *
  * @param tz - 时区字符串（可选）
  * @param at - UTC 时间点（默认当前时间）
@@ -450,7 +451,7 @@ export function computeTopRepos(repos: RepoRecord[], now: Date = new Date()) {
  * ```typescript
  * parseTimezoneOffset("+08:00")       // => 480
  * parseTimezoneOffset("-05:00")       // => -300
- * parseTimezoneOffset("Asia/Shanghai") // => 480
+ * parseTimezoneOffset("Asia/Shanghai", "2024-01-15T12:00:00Z") // => 480（该时刻的快照）
  * parseTimezoneOffset(null)           // => 0 (UTC)
  * parseTimezoneOffset("America/New_York", "2024-07-15T12:00:00Z") // => -240
  * ```
@@ -472,19 +473,19 @@ export function parseTimezoneOffset(tz?: string | null, at?: string): number {
  *
  * @example
  * ```typescript
- * buildTimezone("Asia/Shanghai", 480);
+ * buildTimezone("Asia/Shanghai", resolveTimezone("Asia/Shanghai"));
  * // => {
  * //   auto: "+00:00",
  * //   override: "Asia/Shanghai",
- * //   used: "+08:00"
+ * //   used: "Asia/Shanghai" // 运行时规范化后的 IANA 标识
  * // }
  * ```
  *
  * 设计理念：
- * - auto: 自动推断的时区（MVP 版本暂未实现，固定为 UTC）
+ * - auto: 固定为 UTC（+00:00）；当前不推断用户时区
  * - override: 用户通过 --tz 参数指定的时区
- * - used: 标准化的时区标识（传入目标时），或旧式数字偏移量
- * - 后续可扩展 auto 字段，从 commit 的 tzOffset 推断（参考 pod.md）
+ * - used: 规范化的目标时区；IANA 时区没有一个适用于整份报告的单一数字偏移
+ * - 数字分钟参数仅保留旧式固定偏移调用兼容性
  */
 export function buildTimezone(
   tzOverride: string | null | undefined,
