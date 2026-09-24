@@ -3,6 +3,7 @@ import {
   resolveTimezone,
   localHourAt,
   offsetMinutesAt,
+  type TimezoneInput,
   type TimezoneTarget
 } from "./timezone";
 
@@ -45,6 +46,10 @@ describe("resolveTimezone", () => {
 
   it("converts fixed offsets arithmetically and returns null for invalid timestamps", () => {
     const target = resolveTimezone("+08:00");
+    const normalizedInput: TimezoneInput = target;
+    const legacyInput: TimezoneInput = 480;
+    expect(normalizedInput).toBe(target);
+    expect(legacyInput).toBe(480);
     expect(localHourAt("2024-01-01T20:30:00Z", target)).toBe(4);
     expect(localHourAt("not-a-date", target)).toBeNull();
   });

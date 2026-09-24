@@ -9,7 +9,9 @@ export type IanaTimezoneTarget = {
 };
 
 export type TimezoneTarget = FixedOffsetTimezoneTarget | IanaTimezoneTarget;
-export type TimezoneInput = string | number | null | undefined;
+export type TimezoneInput = TimezoneTarget | number;
+export type RawTimezoneValue = string | null | undefined;
+export type TimezoneResolverInput = RawTimezoneValue | number;
 
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
@@ -29,7 +31,7 @@ function fixedOffset(offsetMinutes: number): FixedOffsetTimezoneTarget {
 }
 
 /** Parse and normalize explicit timezone input. Missing input preserves UTC behavior. */
-export function resolveTimezone(input?: TimezoneInput): TimezoneTarget {
+export function resolveTimezone(input?: TimezoneResolverInput): TimezoneTarget {
   if (input === undefined || input === null) {
     return fixedOffset(0);
   }
