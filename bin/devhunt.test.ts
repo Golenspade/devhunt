@@ -21,6 +21,27 @@ describe("CLI argument parsing", () => {
     expect((options as CLIOptions).tz).toBe("Asia/Shanghai");
   });
 
+  it.each(["UTC", "gMt"])("accepts timezone alias %s and preserves its spelling", (tz) => {
+    const { options } = parseArgs(["report", "alice", "--tz", tz]);
+    expect(options.tz).toBe(tz);
+  });
+
+  it("accepts the inclusive fixed-offset boundary and preserves it", () => {
+    const { options } = parseArgs(["report", "alice", "--tz", "+14:00"]);
+    expect(options.tz).toBe("+14:00");
+  });
+
+  it("accepts an IANA alias and preserves the supplied identifier", () => {
+    const { options } = parseArgs(["report", "alice", "--tz", "US/Eastern"]);
+    expect(options.tz).toBe("US/Eastern");
+  });
+
+  it.each(["+14:01", "Mars/Olympus"])("rejects invalid timezone %s during parsing", (tz) => {
+    const parse = () => parseArgs(["report", "alice", "--tz", tz]);
+    expect(parse).toThrow(tz);
+    expect(parse).toThrow(/UTC.*GMT.*±HH:mm.*IANA/i);
+  });
+
   it("parses scan command with time window", () => {
     const argv = ["scan", "bob", "--window", "year"];
     const { cmd, login, options } = parseArgs(argv);

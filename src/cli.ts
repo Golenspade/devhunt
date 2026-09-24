@@ -1,3 +1,5 @@
+import { resolveTimezone } from "./timezone";
+
 /**
  * CLI 命令行选项接口
  *
@@ -142,44 +144,6 @@ function validateStyle(style: string): void {
 }
 
 /**
- * 验证时区字符串格式
- *
- * @param tz - 时区字符串
- * @returns 如果有效返回 true，否则抛出错误
- */
-function validateTimezone(tz: string): void {
-  if (!tz || tz.trim().length === 0) {
-    throw new Error("时区参数不能为空");
-  }
-
-  // 检查路径遍历字符（但允许 IANA 时区格式中的 /）
-  if (tz.includes("..") || tz.includes("\\")) {
-    throw new Error(`无效的时区格式: "${tz}"。时区不能包含路径遍历字符`);
-  }
-
-  // 检查 SQL 注入尝试（基本检查）
-  const sqlInjectionPattern = /['";]|--|\/\*|\*\/|DROP|TABLE|DELETE|INSERT|UPDATE|SELECT/i;
-  if (sqlInjectionPattern.test(tz)) {
-    throw new Error(`无效的时区格式: "${tz}"。时区包含非法字符`);
-  }
-
-  // 验证 IANA 时区格式（如 Asia/Shanghai, America/New_York）或偏移量格式（如 +08:00）
-  // IANA 时区格式：Continent/Region，可能包含下划线、连字符和数字
-  const ianaPattern = /^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)?$/;
-  const offsetPattern = /^[+-]\d{2}:\d{2}$/;
-  
-  // 如果包含 /，必须是有效的 IANA 格式
-  if (tz.includes("/")) {
-    if (!ianaPattern.test(tz)) {
-      throw new Error(`无效的时区格式: "${tz}"。IANA 时区格式应为 Continent/City（如 "Asia/Shanghai"）`);
-    }
-  } else if (!offsetPattern.test(tz)) {
-    // 不包含 / 且不是偏移量格式，记录警告但允许（可能是 UTC、GMT 等）
-    console.warn(`[devhunt] 警告: 时区格式 "${tz}" 可能无效。建议使用 IANA 时区名称（如 "Asia/Shanghai"）或偏移量格式（如 "+08:00"）`);
-  }
-}
-
-/**
  * 解析命令行参数
  *
  * 从 argv 数组中提取子命令、用户名和选项参数。
@@ -263,12 +227,14 @@ export function parseArgs(
         throw new Error("--tz 参数值不能为空");
       }
       
-      // 验证时区格式
+      // Validate and normalize using the same parser as the analysis pipeline.
       try {
-        validateTimezone(value);
+        resolveTimezone(value);
         options.tz = value;
-      } catch (err) {
-        throw err;
+      } catch {
+        throw new Error(
+          `Invalid timezone "${value}". Use UTC, GMT, ±HH:mm, or a supported IANA timezone.`
+        );
       }
       
     } else if (arg === "--window") {
@@ -372,4 +338,3 @@ export function parseArgs(
 
   return { cmd, login, options };
 }
-
