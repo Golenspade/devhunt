@@ -264,7 +264,7 @@ describe("analyze core metrics", () => {
     });
 
     expect(result.profile.timezone).toEqual({ auto: "+00:00", override: override ?? null, used });
-    expect(result.hoursHistogram.reduce((sum, count) => sum + (count ?? 0), 0)).toBe(2);
+    expect(result.hoursHistogram.reduce<number>((sum, count) => sum + (count ?? 0), 0)).toBe(2);
     for (const [hour, count] of hours) expect(result.hoursHistogram[hour]).toBe(count);
     expect(result.profile.night_ratio).toBe(night);
     expect(result.profile.night_ratio_sample_size).toBe(2);
