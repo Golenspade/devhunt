@@ -31,12 +31,21 @@ describe("resolveTimezone", () => {
     }
   });
 
+  it("rejects shortened, compact, and over-range signed numeric offsets", () => {
+    for (const value of ["+01", "+0100", "+15", "+1500", "+1401", "-2359"]) {
+      expect(() => resolveTimezone(value)).toThrow(`Invalid timezone offset: ${value}`);
+    }
+  });
+
   it("canonicalizes IANA identifiers and aliases through Intl", () => {
     const ny = resolveTimezone("America/New_York");
     expect(ny).toEqual({ id: "America/New_York", timeZone: "America/New_York" });
     const alias = resolveTimezone("US/Eastern");
     const runtimeCanonicalAlias = new Intl.DateTimeFormat("en-US", { timeZone: "US/Eastern" }).resolvedOptions().timeZone;
     expect(alias).toEqual({ id: runtimeCanonicalAlias, timeZone: runtimeCanonicalAlias });
+
+    const etcGmt = resolveTimezone("Etc/GMT+5");
+    expect(etcGmt).toEqual({ id: "Etc/GMT+5", timeZone: "Etc/GMT+5" });
   });
 
   it("rejects unsupported IANA names", () => {

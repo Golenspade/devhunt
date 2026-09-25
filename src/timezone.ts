@@ -54,6 +54,10 @@ export function resolveTimezone(input?: TimezoneResolverInput): TimezoneTarget {
     return fixedOffset(sign * (hours * 60 + minutes));
   }
 
+  if (/^[+-]\d/.test(input)) {
+    throw new RangeError(`Invalid timezone offset: ${input}`);
+  }
+
   try {
     const timeZone = new Intl.DateTimeFormat("en-US", { timeZone: input }).resolvedOptions().timeZone;
     return { id: timeZone, timeZone };

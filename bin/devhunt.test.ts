@@ -42,6 +42,15 @@ describe("CLI argument parsing", () => {
     expect(parse).toThrow(/UTC.*GMT.*±HH:mm.*IANA/i);
   });
 
+  it.each(["+01", "+0100", "+15", "+1500", "+1401", "-2359"])(
+    "rejects malformed or out-of-range numeric timezone %s during parsing",
+    (tz) => {
+      const parse = () => parseArgs(["report", "alice", "--tz", tz]);
+      expect(parse).toThrow(tz);
+      expect(parse).toThrow(/UTC.*GMT.*±HH:mm.*IANA/i);
+    }
+  );
+
   it("parses scan command with time window", () => {
     const argv = ["scan", "bob", "--window", "year"];
     const { cmd, login, options } = parseArgs(argv);
